@@ -1,11 +1,15 @@
 #!/usr/bin/env node
 
 import { config } from "dotenv";
+import express from "express";
+import cors from "cors";
+import { randomUUID } from "node:crypto";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
+  isInitializeRequest,
 } from "@modelcontextprotocol/sdk/types.js";
 import { getToolsFromOpenApi } from "openapi-mcp-generator";
 import { readFileSync } from "fs";
@@ -23,8 +27,18 @@ const loadOpenApiSpecs = () => {
     );
     specs.push(gatewaySpec);
   } catch (error) {
-    console.error("Error loading OpenAPI specs:", error);
+    console.error("Error loading gateway OpenAPI spec:", error);
   }
+
+  try {
+    const controllerSpec = JSON.parse(
+      readFileSync(join(process.cwd(), "openapi", "aap-controller-api_26-devel.json"), "utf8")
+    );
+    specs.push(controllerSpec);
+  } catch (error) {
+    console.error("Error loading controller OpenAPI spec:", error);
+  }
+
   return specs;
 };
 
@@ -36,15 +50,28 @@ const generateTools = async () => {
   for (const spec of openApiSpecs) {
     try {
       const tools = await getToolsFromOpenApi(spec, {
-        baseUrl: "http://localhost:44926"
+        baseUrl: "http://localhost:44926",
+        filterFn: (tool) => {
+          return tool.method.toLowerCase() === 'get';
+        },
       });
-      allTools = allTools.concat(tools);
+      const shorterTools = tools.filter((tool) => {tool.description = tool.description.split('## Results\n')[0]; return tool;});
+      console.log(shorterTools);
+      allTools = allTools.concat(shorterTools);
     } catch (error) {
       console.error("Error generating tools from OpenAPI spec:", error);
     }
   }
 
-  return allTools;
+  // Filter out tools that start with specific prefixes
+  const excludedPrefixes = ['legacy_', 'service_', 'applications_', 'authenticator', 'feature', 'http_', 'api_credential', 'api_execution_environments_', 'api_workflow', 'api_host', 'api_ad_hoc'];
+  const filteredTools = allTools.filter(tool =>
+    !excludedPrefixes.some(prefix => tool.name.startsWith(prefix))
+  );
+  const filteredCount = allTools.length - filteredTools.length;
+  console.log(`Filtered out ${filteredCount} tools (prefixes: ${excludedPrefixes.join(', ')})`);
+
+  return filteredTools;
 };
 
 let allTools: any[] = [];
@@ -73,6 +100,19 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args = {} } = request.params;
+
+  // Silently ignore filtered tools
+  const excludedPrefixes = ['legacy_', 'service_', 'applications_', 'authenticator', 'feature', 'http_', 'api_credential', 'api_execution_environments_', 'api_workflow', 'api_host', 'api_ad_hoc', 'api_instance_'];
+  if (excludedPrefixes.some(prefix => name.startsWith(prefix))) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: "Filtered tool calls are ignored",
+        },
+      ],
+    };
+  }
 
   // Find the matching tool
   const tool = allTools.find(t => t.name === name);
@@ -147,15 +187,169 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   }
 });
 
+// Map to store transports by session ID
+const transports: Record<string, StreamableHTTPServerTransport> = {};
+
+const MCP_PORT = process.env.MCP_PORT ? parseInt(process.env.MCP_PORT, 10) : 3000;
+
+const app = express();
+app.use(express.json());
+
+// Allow CORS for all domains, expose the Mcp-Session-Id header
+app.use(cors({
+  origin: '*',
+  exposedHeaders: ["Mcp-Session-Id"]
+}));
+
+// MCP POST endpoint handler
+const mcpPostHandler = async (req: express.Request, res: express.Response) => {
+  const sessionId = req.headers['mcp-session-id'] as string;
+
+  if (sessionId) {
+    console.log(`Received MCP request for session: ${sessionId}`);
+  } else {
+    console.log('Request body:', req.body);
+  }
+
+  try {
+    let transport: StreamableHTTPServerTransport;
+
+    if (sessionId && transports[sessionId]) {
+      // Reuse existing transport
+      transport = transports[sessionId];
+    } else if (!sessionId && isInitializeRequest(req.body)) {
+      // New initialization request
+      transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: () => randomUUID(),
+        onsessioninitialized: (sessionId: string) => {
+          console.log(`Session initialized with ID: ${sessionId}`);
+          transports[sessionId] = transport;
+        }
+      });
+
+      // Set up onclose handler to clean up transport when closed
+      transport.onclose = () => {
+        const sid = transport.sessionId;
+        if (sid && transports[sid]) {
+          console.log(`Transport closed for session ${sid}, removing from transports map`);
+          delete transports[sid];
+        }
+      };
+
+      // Connect the transport to the MCP server BEFORE handling the request
+      await server.connect(transport);
+      await transport.handleRequest(req, res, req.body);
+      return;
+    } else {
+      // Invalid request - no session ID or not initialization request
+      res.status(400).json({
+        jsonrpc: '2.0',
+        error: {
+          code: -32000,
+          message: 'Bad Request: No valid session ID provided',
+        },
+        id: null,
+      });
+      return;
+    }
+
+    // Handle the request with existing transport
+    await transport.handleRequest(req, res, req.body);
+  } catch (error) {
+    console.error('Error handling MCP request:', error);
+    if (!res.headersSent) {
+      res.status(500).json({
+        jsonrpc: '2.0',
+        error: {
+          code: -32603,
+          message: 'Internal server error',
+        },
+        id: null,
+      });
+    }
+  }
+};
+
+// MCP GET endpoint for SSE streams
+const mcpGetHandler = async (req: express.Request, res: express.Response) => {
+  const sessionId = req.headers['mcp-session-id'] as string;
+
+  if (!sessionId || !transports[sessionId]) {
+    res.status(400).send('Invalid or missing session ID');
+    return;
+  }
+
+  const lastEventId = req.headers['last-event-id'];
+  if (lastEventId) {
+    console.log(`Client reconnecting with Last-Event-ID: ${lastEventId}`);
+  } else {
+    console.log(`Establishing new SSE stream for session ${sessionId}`);
+  }
+
+  const transport = transports[sessionId];
+  await transport.handleRequest(req, res);
+};
+
+// MCP DELETE endpoint for session termination
+const mcpDeleteHandler = async (req: express.Request, res: express.Response) => {
+  const sessionId = req.headers['mcp-session-id'] as string;
+
+  if (!sessionId || !transports[sessionId]) {
+    res.status(400).send('Invalid or missing session ID');
+    return;
+  }
+
+  console.log(`Received session termination request for session ${sessionId}`);
+
+  try {
+    const transport = transports[sessionId];
+    await transport.handleRequest(req, res);
+  } catch (error) {
+    console.error('Error handling session termination:', error);
+    if (!res.headersSent) {
+      res.status(500).send('Error processing session termination');
+    }
+  }
+};
+
+// Set up routes
+app.post('/mcp', mcpPostHandler);
+app.get('/mcp', mcpGetHandler);
+app.delete('/mcp', mcpDeleteHandler);
+
 async function main() {
   // Initialize tools before starting server
   allTools = await generateTools();
-  console.error(`Loaded ${allTools.length} tools from OpenAPI specifications`);
+  console.log(`Loaded ${allTools.length} tools from OpenAPI specifications`);
 
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
-  console.error("MCP server running on stdio");
+  // Start HTTP server
+  app.listen(MCP_PORT, (error?: Error) => {
+    if (error) {
+      console.error('Failed to start server:', error);
+      process.exit(1);
+    }
+    console.log(`MCP Streamable HTTP Server listening on port ${MCP_PORT}`);
+  });
 }
+
+// Handle server shutdown
+process.on('SIGINT', async () => {
+  console.log('Shutting down server...');
+
+  // Close all active transports to properly clean up resources
+  for (const sessionId in transports) {
+    try {
+      console.log(`Closing transport for session ${sessionId}`);
+      await transports[sessionId].close();
+      delete transports[sessionId];
+    } catch (error) {
+      console.error(`Error closing transport for session ${sessionId}:`, error);
+    }
+  }
+
+  console.log('Server shutdown complete');
+  process.exit(0);
+});
 
 main().catch((error) => {
   console.error("Server error:", error);
