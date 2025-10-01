@@ -938,7 +938,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   };
 });
 
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
+server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
   const { name, arguments: args = {} } = request.params;
 
   // Find the matching tool
@@ -947,16 +947,30 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     throw new Error(`Unknown tool: ${name}`);
   }
 
+  // Get the session ID from the transport context
+  const transport = extra?.transport as StreamableHTTPServerTransport;
+  const sessionId = transport?.sessionId;
+
+  // Get the Bearer token for this session
+  let bearerToken = process.env.BEARER_TOKEN_OAUTH2_AUTHENTICATION; // fallback to env var
+  if (sessionId && sessionTokens[sessionId]) {
+    bearerToken = sessionTokens[sessionId];
+    console.log(`Using session-specific Bearer token for session: ${sessionId}`);
+  } else {
+    console.log('Using fallback Bearer token from environment variable');
+  }
+
   // Execute the tool by making HTTP request
   try {
     // Build URL from path template and parameters
     let url = tool.pathTemplate;
     const headers: Record<string, string> = {
-      'Authorization': `Bearer ${process.env.BEARER_TOKEN_OAUTH2_AUTHENTICATION}`,
+      'Authorization': `Bearer ${bearerToken}`,
       'Accept': 'application/json'
     };
 
     for (const param of tool.parameters || []) {
+      console.log(param.name);
       if (param.in === 'path' && args[param.name]) {
         url = url.replace(`{${param.name}}`, String(args[param.name]));
       }
@@ -1029,14 +1043,24 @@ app.use(cors({
   exposedHeaders: ["Mcp-Session-Id"]
 }));
 
+// Map to store Bearer tokens by session ID
+const sessionTokens: Record<string, string> = {};
+
 // MCP POST endpoint handler
 const mcpPostHandler = async (req: express.Request, res: express.Response) => {
   const sessionId = req.headers['mcp-session-id'] as string;
+  const authHeader = req.headers['authorization'] as string;
 
   if (sessionId) {
     console.log(`Received MCP request for session: ${sessionId}`);
+    // Store the Bearer token for this session if provided
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      sessionTokens[sessionId] = authHeader.substring(7); // Remove "Bearer " prefix
+      console.log(`Updated Bearer token for session: ${sessionId}`);
+    }
   } else {
     console.log('Request body:', req.body);
+    // For initialization requests, we'll store the token when session is created
   }
 
   try {
@@ -1052,6 +1076,11 @@ const mcpPostHandler = async (req: express.Request, res: express.Response) => {
         onsessioninitialized: (sessionId: string) => {
           console.log(`Session initialized with ID: ${sessionId}`);
           transports[sessionId] = transport;
+          // Store the Bearer token for this new session if provided
+          if (authHeader && authHeader.startsWith('Bearer ')) {
+            sessionTokens[sessionId] = authHeader.substring(7); // Remove "Bearer " prefix
+            console.log(`Stored Bearer token for new session: ${sessionId}`);
+          }
         }
       });
 
@@ -1061,6 +1090,11 @@ const mcpPostHandler = async (req: express.Request, res: express.Response) => {
         if (sid && transports[sid]) {
           console.log(`Transport closed for session ${sid}, removing from transports map`);
           delete transports[sid];
+          // Also clean up the session token
+          if (sessionTokens[sid]) {
+            delete sessionTokens[sid];
+            console.log(`Removed Bearer token for session: ${sid}`);
+          }
         }
       };
 
@@ -1101,10 +1135,17 @@ const mcpPostHandler = async (req: express.Request, res: express.Response) => {
 // MCP GET endpoint for SSE streams
 const mcpGetHandler = async (req: express.Request, res: express.Response) => {
   const sessionId = req.headers['mcp-session-id'] as string;
+  const authHeader = req.headers['authorization'] as string;
 
   if (!sessionId || !transports[sessionId]) {
     res.status(400).send('Invalid or missing session ID');
     return;
+  }
+
+  // Update Bearer token for this session if provided
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    sessionTokens[sessionId] = authHeader.substring(7); // Remove "Bearer " prefix
+    console.log(`Updated Bearer token for session: ${sessionId}`);
   }
 
   const lastEventId = req.headers['last-event-id'];
@@ -1132,6 +1173,12 @@ const mcpDeleteHandler = async (req: express.Request, res: express.Response) => 
   try {
     const transport = transports[sessionId];
     await transport.handleRequest(req, res);
+
+    // Clean up the session token when session is terminated
+    if (sessionTokens[sessionId]) {
+      delete sessionTokens[sessionId];
+      console.log(`Removed Bearer token for terminated session: ${sessionId}`);
+    }
   } catch (error) {
     console.error('Error handling session termination:', error);
     if (!res.headersSent) {
