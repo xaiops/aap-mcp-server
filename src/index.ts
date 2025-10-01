@@ -18,46 +18,138 @@ import { join } from "path";
 // Load environment variables
 config();
 
-// Load OpenAPI specifications
-const loadOpenApiSpecs = () => {
-  const specFiles = [
-    "aap-controller-api_26-devel.json",
-    "aap-gateway-api_25.json",
-    //"ansible-ai-connect-service.json",
-  ];
-  const specs = specFiles.map((fileName) =>
-    JSON.parse(
-      readFileSync(join(process.cwd(), "openapi", fileName), "utf8")
-    )
-  );
-  console.log(`Number of OpenAPIv3 files=${specs.length}`)
+// Configuration constants
+const CONFIG = {
+  BASE_URL: "http://localhost:44926",
+  MCP_PORT: process.env.MCP_PORT ? parseInt(process.env.MCP_PORT, 10) : 3000,
+  FALLBACK_BEARER_TOKEN: process.env.BEARER_TOKEN_OAUTH2_AUTHENTICATION,
+} as const;
 
-  return specs;
+// TypeScript interfaces
+interface OpenApiSpecEntry {
+  url: string;
+  reformatFunc: (tool: any) => any;
+  spec?: any;
+}
+
+interface SessionTokens {
+  [sessionId: string]: string;
+}
+
+interface ToolWithSize {
+  name: string;
+  description: string;
+  inputSchema: any;
+  pathTemplate: string;
+  method: string;
+  parameters?: any[];
+  size: number;
+  deprecated?: boolean;
+}
+
+// Helper functions
+const extractBearerToken = (authHeader: string | undefined): string | undefined => {
+  return authHeader && authHeader.startsWith('Bearer ')
+    ? authHeader.substring(7)
+    : undefined;
+};
+
+const getBearerTokenForSession = (sessionId: string | undefined): string => {
+  let bearerToken = CONFIG.FALLBACK_BEARER_TOKEN;
+  if (sessionId && sessionTokens[sessionId]) {
+    bearerToken = sessionTokens[sessionId];
+    console.log(`Using session-specific Bearer token for session: ${sessionId}`);
+  } else {
+    console.log('Using fallback Bearer token from environment variable');
+  }
+
+  if (!bearerToken) {
+    throw new Error('No Bearer token available. Please provide an Authorization header or set BEARER_TOKEN_OAUTH2_AUTHENTICATION environment variable.');
+  }
+
+  return bearerToken;
+};
+
+const storeBearerTokenForSession = (sessionId: string, authHeader: string | undefined): void => {
+  const token = extractBearerToken(authHeader);
+  if (token) {
+    sessionTokens[sessionId] = token;
+    console.log(`Updated Bearer token for session: ${sessionId}`);
+  }
+};
+
+// Load OpenAPI specifications from HTTP URLs
+const loadOpenApiSpecs = async (): Promise<OpenApiSpecEntry[]> => {
+  const specUrls: OpenApiSpecEntry[] = [
+    {
+      url: `${CONFIG.BASE_URL}/api/eda/v1/openapi.json`,
+      reformatFunc: (tool: any) => tool
+    },
+    {
+      url: `${CONFIG.BASE_URL}/api/gateway/v1/docs/schema/`,
+      reformatFunc: (tool: any) => tool
+    },
+    {
+      url: `${CONFIG.BASE_URL}/api/galaxy/v3/openapi.json`,
+      reformatFunc: (tool: any) => tool
+    },
+    {
+      url: "https://s3.amazonaws.com/awx-public-ci-files/release_4.6/schema.json",
+      reformatFunc: (tool: any) => {
+        tool.pathTemplate = tool.pathTemplate.replace("/api/v2", "/api/controller/v2");
+        return tool;
+      }
+    },
+  ];
+
+  for (const specEntry of specUrls) {
+    try {
+      console.log(`Fetching OpenAPI spec from: ${specEntry.url}`);
+      const response = await fetch(specEntry.url, {
+        headers: {
+          'Accept': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        console.error(`Failed to fetch ${specEntry.url}: ${response.status} ${response.statusText}`);
+        continue;
+      }
+
+      specEntry.spec = await response.json();
+      console.log(`Successfully loaded OpenAPI spec from: ${specEntry.url}`);
+    } catch (error) {
+      console.error(`Error fetching OpenAPI spec from ${specEntry.url}:`, error);
+      // Continue with other URLs even if one fails
+    }
+  }
+
+  console.log(`Number of OpenAPIv3 files loaded=${specUrls.length}`)
+  return specUrls;
 };
 
 // Generate tools from OpenAPI specs
-const generateTools = async () => {
-  const openApiSpecs = loadOpenApiSpecs();
+const generateTools = async (): Promise<ToolWithSize[]> => {
+  const openApiSpecs = await loadOpenApiSpecs();
   let rawToolList: any[] = [];
 
   for (const spec of openApiSpecs) {
     try {
-      const tools = await getToolsFromOpenApi(spec, {
-        baseUrl: "http://localhost:44926",
+      const tools = await getToolsFromOpenApi(spec.spec, {
+        baseUrl: CONFIG.BASE_URL,
         dereference: true,
-//        filterFn: (tool) => {
-//          return tool.method.toLowerCase() === 'get';
-//        },
+        //filterFn: (tool) => {
+          //return tool.method.toLowerCase() === 'get';
+        //},
       });
-      tools.filter((tool) => {tool.description = tool.description.split('\n\n')[0]});
-      tools.forEach((tool) => {console.log(`>${tool.description}--`)});
+      tools.forEach((tool) => spec.reformatFunc(tool));
+      tools.filter((tool) => {tool.description = tool.description.trim().split('\n\n')[0]});
       rawToolList = rawToolList.concat(tools);
       //rawToolList = rawToolList.concat(shorterTools);
     } catch (error) {
       console.error("Error generating tools from OpenAPI spec:", error);
     }
   }
-
 
   const allowList = [
     // "api_list",
@@ -878,10 +970,11 @@ const generateTools = async () => {
     "users_teams_list",
     // "users_tokens_retrieve",
     // "o_retrieve",
+    "repositories_list",
   ];
 
   // Calculate size for each tool and sort by size
-  const toolsWithSize = rawToolList.map(tool => {
+  const toolsWithSize: ToolWithSize[] = rawToolList.map(tool => {
     const toolSize = JSON.stringify({
       name: tool.name,
       description: tool.description,
@@ -896,21 +989,23 @@ const generateTools = async () => {
   // Sort by size in descending order
   toolsWithSize.sort((a, b) => b.size - a.size);
 
-  console.log("=== LARGEST TOOLS ===");
+  console.log("=== TOOLS BY SIZE ===");
   console.log(`Tool name,size (characters)`);
   toolsWithSize.forEach((tool, index) => {
-    console.log(`${tool.name},${tool.size}`);
+    console.log(`${tool.name},${tool.size},"${tool.description}",${tool.pathTemplate}`);
   });
-  console.log("=== END OF LARGEST TOOLS ===");
+  console.log("=== END OF TOOLS BY SIZE ===");
 
-  const filteredTools = toolsWithSize.filter(tool =>
-    allowList.some(allowed => tool.name == allowed)
+  const filteredTools = toolsWithSize.
+        filter(tool => !tool.deprecated).
+        filter(tool => allowList.some(allowed => tool.name == allowed)
   );
 
   const fullSize = toolsWithSize.reduce((accumulator, currentValue) => accumulator + currentValue.size, 0);
   const loadedSize = filteredTools.reduce((accumulator, currentValue) => accumulator + currentValue.size, 0);
 
   console.log(`Tool number=${filteredTools.length} loadedSize=${loadedSize}, fullSize=${fullSize} characters`);
+  console.log(`Cherry-picked ${filteredTools.length} tools from OpenAPI specifications (${toolsWithSize.length} were available)`);
   return filteredTools;
 };
 
@@ -948,17 +1043,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
   }
 
   // Get the session ID from the transport context
-  const transport = extra?.transport as StreamableHTTPServerTransport;
-  const sessionId = transport?.sessionId;
+  const sessionId = extra?.sessionId;
 
   // Get the Bearer token for this session
-  let bearerToken = process.env.BEARER_TOKEN_OAUTH2_AUTHENTICATION; // fallback to env var
-  if (sessionId && sessionTokens[sessionId]) {
-    bearerToken = sessionTokens[sessionId];
-    console.log(`Using session-specific Bearer token for session: ${sessionId}`);
-  } else {
-    console.log('Using fallback Bearer token from environment variable');
-  }
+  const bearerToken = getBearerTokenForSession(sessionId);
 
   // Execute the tool by making HTTP request
   try {
@@ -970,7 +1058,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
     };
 
     for (const param of tool.parameters || []) {
-      console.log(param.name);
       if (param.in === 'path' && args[param.name]) {
         url = url.replace(`{${param.name}}`, String(args[param.name]));
       }
@@ -1000,9 +1087,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
     }
 
     // Make HTTP request
-    console.log(`Calling: http://localhost:44926${url}`);
-    const response = await fetch(`http://localhost:44926${url}`, requestOptions);
-    console.log(response);
+    const fullUrl = `${CONFIG.BASE_URL}${url}`;
+    console.log(`Calling: ${fullUrl}`);
+    const response = await fetch(fullUrl, requestOptions);
 
     let result;
     const contentType = response.headers.get('content-type');
@@ -1029,10 +1116,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
   }
 });
 
-// Map to store transports by session ID
+// Global state management
 const transports: Record<string, StreamableHTTPServerTransport> = {};
-
-const MCP_PORT = process.env.MCP_PORT ? parseInt(process.env.MCP_PORT, 10) : 3000;
+const sessionTokens: SessionTokens = {};
 
 const app = express();
 app.use(express.json());
@@ -1043,8 +1129,6 @@ app.use(cors({
   exposedHeaders: ["Mcp-Session-Id"]
 }));
 
-// Map to store Bearer tokens by session ID
-const sessionTokens: Record<string, string> = {};
 
 // MCP POST endpoint handler
 const mcpPostHandler = async (req: express.Request, res: express.Response) => {
@@ -1053,14 +1137,9 @@ const mcpPostHandler = async (req: express.Request, res: express.Response) => {
 
   if (sessionId) {
     console.log(`Received MCP request for session: ${sessionId}`);
-    // Store the Bearer token for this session if provided
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      sessionTokens[sessionId] = authHeader.substring(7); // Remove "Bearer " prefix
-      console.log(`Updated Bearer token for session: ${sessionId}`);
-    }
+    storeBearerTokenForSession(sessionId, authHeader);
   } else {
     console.log('Request body:', req.body);
-    // For initialization requests, we'll store the token when session is created
   }
 
   try {
@@ -1076,11 +1155,7 @@ const mcpPostHandler = async (req: express.Request, res: express.Response) => {
         onsessioninitialized: (sessionId: string) => {
           console.log(`Session initialized with ID: ${sessionId}`);
           transports[sessionId] = transport;
-          // Store the Bearer token for this new session if provided
-          if (authHeader && authHeader.startsWith('Bearer ')) {
-            sessionTokens[sessionId] = authHeader.substring(7); // Remove "Bearer " prefix
-            console.log(`Stored Bearer token for new session: ${sessionId}`);
-          }
+          storeBearerTokenForSession(sessionId, authHeader);
         }
       });
 
@@ -1143,10 +1218,7 @@ const mcpGetHandler = async (req: express.Request, res: express.Response) => {
   }
 
   // Update Bearer token for this session if provided
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    sessionTokens[sessionId] = authHeader.substring(7); // Remove "Bearer " prefix
-    console.log(`Updated Bearer token for session: ${sessionId}`);
-  }
+  storeBearerTokenForSession(sessionId, authHeader);
 
   const lastEventId = req.headers['last-event-id'];
   if (lastEventId) {
@@ -1192,19 +1264,25 @@ app.post('/mcp', mcpPostHandler);
 app.get('/mcp', mcpGetHandler);
 app.delete('/mcp', mcpDeleteHandler);
 
-async function main() {
-  // Initialize tools before starting server
-  allTools = await generateTools();
-  console.log(`Loaded ${allTools.length} tools from OpenAPI specifications`);
+async function main(): Promise<void> {
+  try {
+    // Initialize tools before starting server
+    console.log('Loading OpenAPI specifications and generating tools...');
+    allTools = await generateTools();
+    console.log(`Successfully loaded ${allTools.length} tools`);
 
-  // Start HTTP server
-  app.listen(MCP_PORT, (error?: Error) => {
-    if (error) {
-      console.error('Failed to start server:', error);
-      process.exit(1);
-    }
-    console.log(`MCP Streamable HTTP Server listening on port ${MCP_PORT}`);
-  });
+    // Start HTTP server
+    app.listen(CONFIG.MCP_PORT, (error?: Error) => {
+      if (error) {
+        console.error('Failed to start server:', error);
+        process.exit(1);
+      }
+      console.log(`MCP Streamable HTTP Server listening on port ${CONFIG.MCP_PORT}`);
+    });
+  } catch (error) {
+    console.error('Failed to initialize server:', error);
+    process.exit(1);
+  }
 }
 
 // Handle server shutdown

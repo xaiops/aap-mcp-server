@@ -15,7 +15,6 @@ $ claude mcp add poc-aap-mcp -t http http://localhost:3000/mcp -H 'Authorization
 
 ```shell
 $ $EDITOR .env
-$ source .env
 $ yarn run dev
 ```
 
