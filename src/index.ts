@@ -12,6 +12,7 @@ import {
   isInitializeRequest,
   Tool,
 } from "@modelcontextprotocol/sdk/types.js";
+import type { McpToolDefinition } from "openapi-mcp-generator";
 import { getToolsFromOpenApi } from "openapi-mcp-generator";
 import { readFileSync, writeFileSync } from "fs";
 import { join } from "path";
@@ -146,10 +147,16 @@ const adminPersona: Persona = [
 ];
 
 // TypeScript interfaces
+interface AAPMcpToolDefinition extends McpToolDefinition {
+  deprecated: boolean;
+  service?: string;
+}
+
 interface OpenApiSpecEntry {
   url: string;
-  reformatFunc: (tool: any) => any;
+  reformatFunc: (tool: AAPMcpToolDefinition) => AAPMcpToolDefinition | false;
   spec?: any;
+  service?: string;
 }
 
 interface SessionData {
@@ -209,13 +216,13 @@ const validateTokenAndGetPermissions = async (bearerToken: string): Promise<{is_
       throw new Error(`Authentication failed: ${response.status} ${response.statusText}`);
     }
 
-    const data = await response.json();
+    const data = await response.json() as any;
 
     if (!data.results || !Array.isArray(data.results) || data.results.length === 0) {
       throw new Error('Invalid response format from /api/gateway/v1/me/');
     }
 
-    const userInfo = data.results[0];
+    const userInfo = data.results[0] as any;
     return {
       is_superuser: userInfo.is_superuser || false,
       is_platform_auditor: userInfo.is_platform_auditor || false
@@ -262,7 +269,7 @@ const getUserPersona = (sessionId: string | undefined, personaOverride?: string)
 };
 
 // Filter tools based on persona
-const filterToolsByPersona = (tools: any[], persona: Persona): any[] => {
+const filterToolsByPersona = (tools: ToolWithSize[], persona: Persona): ToolWithSize[] => {
   return tools.filter(tool => persona.includes(tool.name));
 };
 
@@ -271,7 +278,7 @@ const loadOpenApiSpecs = async (): Promise<OpenApiSpecEntry[]> => {
   const specUrls: OpenApiSpecEntry[] = [
     {
       url: `${CONFIG.BASE_URL}/api/eda/v1/openapi.json`,
-      reformatFunc: (tool: Tool) => {
+      reformatFunc: (tool: AAPMcpToolDefinition) => {
         tool.name = "eda." + tool.name;
         tool.pathTemplate = "/api/eda/v1" + tool.pathTemplate;
         return tool;
@@ -280,10 +287,10 @@ const loadOpenApiSpecs = async (): Promise<OpenApiSpecEntry[]> => {
     },
     {
       url: `${CONFIG.BASE_URL}/api/gateway/v1/docs/schema/`,
-      reformatFunc: (tool: Tool) => {
+      reformatFunc: (tool: AAPMcpToolDefinition) => {
         tool.name = "gateway." + tool.name;
-        tool.description = tool.description.trim().split('\n\n')[0];
-        if (tool.description.includes("Legacy")) {
+        tool.description = tool.description?.trim().split('\n\n')[0];
+        if (tool.description?.includes("Legacy")) {
           return false
         }
         return tool;
@@ -292,8 +299,8 @@ const loadOpenApiSpecs = async (): Promise<OpenApiSpecEntry[]> => {
     },
     {
       url: `${CONFIG.BASE_URL}/api/galaxy/v3/openapi.json`,
-      reformatFunc: (tool: Tool) => {
-        if (tool.pathTemplate.startsWith("/api/galaxy/_ui")) {
+      reformatFunc: (tool: AAPMcpToolDefinition) => {
+        if (tool.pathTemplate?.startsWith("/api/galaxy/_ui")) {
           return false
         }
         if (!tool.name.startsWith("api_galaxy_v3")) {
@@ -307,10 +314,10 @@ const loadOpenApiSpecs = async (): Promise<OpenApiSpecEntry[]> => {
     },
     {
       url: "https://s3.amazonaws.com/awx-public-ci-files/release_4.6/schema.json",
-      reformatFunc: (tool: Tool) => {
-        tool.pathTemplate = tool.pathTemplate.replace("/api/v2", "/api/controller/v2");
+      reformatFunc: (tool: AAPMcpToolDefinition) => {
+        tool.pathTemplate = tool.pathTemplate?.replace("/api/v2", "/api/controller/v2");
         tool.name = tool.name.replace(/api_(.+)/, "controller.$1");
-        tool.description = tool.description.trim().split('\n\n')[0];
+        tool.description = tool.description?.trim().split('\n\n')[0];
         return tool;
       },
       service: 'controller',
@@ -346,17 +353,18 @@ const loadOpenApiSpecs = async (): Promise<OpenApiSpecEntry[]> => {
 // Generate tools from OpenAPI specs
 const generateTools = async (): Promise<ToolWithSize[]> => {
   const openApiSpecs = await loadOpenApiSpecs();
-  let rawToolList: any[] = [];
+  let rawToolList: AAPMcpToolDefinition[] = [];
 
   for (const spec of openApiSpecs) {
     try {
       const tools = await getToolsFromOpenApi(spec.spec, {
         baseUrl: CONFIG.BASE_URL,
         dereference: true,
-      });
+      }) as AAPMcpToolDefinition[];
       const filteredTools = tools.filter((tool) => {
         tool.service = spec.service; // Add service information to each tool
-        return spec.reformatFunc(tool);
+        const result = spec.reformatFunc(tool);
+        return result !== false;
       }).filter(tool => !tool.deprecated); // Controller API doesn't expose the deprecated flag yet
       rawToolList = rawToolList.concat(filteredTools);
     } catch (error) {
@@ -387,23 +395,16 @@ const generateTools = async (): Promise<ToolWithSize[]> => {
   ).join('\n');
   const csvContent = csvHeader + csvRows;
 
-  // Write CSV to file
-  try {
+  // Write the tools list in the local environment
+  if (process.env.NODE_ENV === "development") {
     writeFileSync('tool_list.csv', csvContent, 'utf8');
     console.log(`Tool list saved to tool_list.csv (${toolsWithSize.length} tools)`);
-  } catch (error) {
-    console.error('Failed to write tool_list.csv:', error);
-    // Fallback to console output if file writing fails
-    console.log("=== TOOLS BY SIZE ===");
-    console.log(csvHeader.trim());
-    console.log(csvRows);
-    console.log("=== END OF TOOLS BY SIZE ===");
   }
 
   return toolsWithSize;
 };
 
-let allTools: any[] = [];
+let allTools: ToolWithSize[] = [];
 
 const server = new Server(
   {
@@ -692,9 +693,9 @@ const mcpDeleteHandler = async (req: express.Request, res: express.Response, per
 };
 
 // Set up routes
-app.post('/mcp', mcpPostHandler);
-app.get('/mcp', mcpGetHandler);
-app.delete('/mcp', mcpDeleteHandler);
+app.post('/mcp', (req, res) => mcpPostHandler(req, res));
+app.get('/mcp', (req, res) => mcpGetHandler(req, res));
+app.delete('/mcp', (req, res) => mcpDeleteHandler(req, res));
 
 // Persona-specific routes
 app.post('/:persona/mcp', (req, res) => {
