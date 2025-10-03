@@ -165,6 +165,20 @@ To add support for additional AAP services:
 2. Implement a `reformatFunc` to standardize tool names and paths
 3. Update the persona definitions to include relevant tools
 
+## Container
+
+Build the image with:
+
+``` bash
+podman build -f Containerfile . -t aap-mcp
+```
+
+And run it with:
+
+``` bash
+podman run -e BASE_URL=http://your-aap-installation localhost/aap-mcp
+```
+
 ## Troubleshooting
 
 ### Common Issues
