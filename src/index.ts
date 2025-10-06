@@ -16,6 +16,7 @@ import type { McpToolDefinition } from "openapi-mcp-generator";
 import { getToolsFromOpenApi } from "openapi-mcp-generator";
 import { readFileSync, writeFileSync } from "fs";
 import { join } from "path";
+import * as yaml from "js-yaml";
 
 // Load environment variables
 config();
@@ -30,121 +31,34 @@ const CONFIG = {
 
 type Persona = string[];
 
-const anonymousPersona: Persona = [];
+interface PersonaConfig {
+  personas: {
+    user: string[];
+    admin: string[];
+    anonymous: string[];
+  };
+}
 
-// Define personas - tool lists for different user types
-const userPersona: Persona = [
-  // EDA tools for regular users
-  "eda.activations_list",
-  "eda.activations_retrieve",
-  "eda.projects_list",
-  "eda.projects_retrieve",
-  "eda.projects_partial_update",
-  "eda.projects_sync_create",
-  "eda.rulebooks_list",
-  "eda.rulebooks_retrieve",
-  "eda.decision_environments_list",
-  "eda.decision_environments_retrieve",
-  "eda.audit_rules_list",
-  "eda.audit_rules_retrieve",
-  "eda.event_streams_list",
-  "eda.event_streams_retrieve",
+// Load personas from configuration file
+const loadPersonasFromConfig = (): PersonaConfig => {
+  const configPath = join(process.cwd(), 'aap-mcp.yaml');
+  const configFile = readFileSync(configPath, 'utf8');
+  const config = yaml.load(configFile) as PersonaConfig;
 
-  // Controller tools for job management
-  "controller.jobs_list",
-  "controller.jobs_read",
-  "controller.jobs_stdout_read",
-  "controller.job_templates_list",
-  "controller.job_templates_read",
-  "controller.job_templates_launch_read",
-  "controller.inventories_list",
-  "controller.inventories_read",
-  "controller.projects_list",
-  "controller.projects_read",
-  "controller.organizations_list",
-  "controller.organizations_read",
+  if (!config.personas) {
+    throw new Error('Invalid configuration: missing personas section');
+  }
 
-  // Galaxy tools for content
-  "galaxy.collections_all_get",
-  "galaxy.collection_versions_all_get"
-];
+  return config;
+};
 
-const adminPersona: Persona = [
-  // Include all user persona tools
-  ...userPersona,
+// Load personas from configuration
+const personaConfig = loadPersonasFromConfig();
+const anonymousPersona: Persona = personaConfig.personas.anonymous;
 
-  // Additional admin-only tools
-  "eda.users_list",
-  "eda.users_retrieve",
-  "eda.users_partial_update",
-  "eda.teams_list",
-  "eda.teams_retrieve",
-  "eda.organizations_list",
-  "eda.organizations_retrieve",
-  "eda.eda_credentials_list",
-  "eda.eda_credentials_retrieve",
-  "eda.eda_credentials_create",
-  "eda.eda_credentials_partial_update",
-  "eda.eda_credentials_destroy",
-  "eda.credential_types_list",
-  "eda.credential_types_retrieve",
-  "eda.credential_types_create",
-  "eda.credential_types_partial_update",
-  "eda.credential_types_destroy",
-  "eda.decision_environments_create",
-  "eda.decision_environments_partial_update",
-  "eda.decision_environments_destroy",
-  "eda.projects_destroy",
-  "eda.activations_destroy",
-  "eda.role_definitions_list",
-  "eda.role_definitions_retrieve",
-  "eda.role_definitions_create",
-  "eda.role_definitions_update",
-  "eda.role_user_assignments_list",
-  "eda.role_user_assignments_create",
-  "eda.role_team_assignments_list",
-  "eda.role_team_assignments_create",
-
-  // Gateway admin tools
-  "gateway.users_list",
-  "gateway.users_retrieve",
-  // doesn't work well because of the 'password' field
-  // we use controller.users_create instead for n
-  // "gateway.users_create",
-  "gateway.users_update",
-  "gateway.users_partial_update",
-  "gateway.users_destroy",
-  "gateway.teams_list",
-  "gateway.teams_retrieve",
-  "gateway.teams_create",
-  "gateway.teams_update",
-  "gateway.teams_partial_update",
-  "gateway.teams_destroy",
-  "gateway.organizations_list",
-  "gateway.organizations_retrieve",
-  "gateway.organizations_create",
-  "gateway.organizations_update",
-  "gateway.organizations_partial_update",
-  "gateway.organizations_destroy",
-  "gateway.role_definitions_list",
-  "gateway.role_definitions_retrieve",
-  "gateway.role_definitions_create",
-  "gateway.role_definitions_update",
-  "gateway.role_definitions_partial_update",
-  "gateway.role_definitions_destroy",
-
-  // Controller admin tools
-  "controller.users_create",
-  "controller.credentials_list",
-  "controller.credentials_read",
-  "controller.credentials_delete",
-  "controller.inventory_sources_list",
-  "controller.inventory_sources_read",
-  "controller.instances_list",
-  "controller.instances_read",
-  "controller.instance_groups_list",
-  "controller.instance_groups_read"
-];
+// Define personas from configuration
+const userPersona: Persona = personaConfig.personas.user;
+const adminPersona: Persona = personaConfig.personas.admin;
 
 // TypeScript interfaces
 interface AAPMcpToolDefinition extends McpToolDefinition {
@@ -154,6 +68,7 @@ interface AAPMcpToolDefinition extends McpToolDefinition {
 
 interface OpenApiSpecEntry {
   url: string;
+  localPath?: string;
   reformatFunc: (tool: AAPMcpToolDefinition) => AAPMcpToolDefinition | false;
   spec?: any;
   service?: string;
@@ -273,11 +188,12 @@ const filterToolsByPersona = (tools: ToolWithSize[], persona: Persona): ToolWith
   return tools.filter(tool => persona.includes(tool.name));
 };
 
-// Load OpenAPI specifications from HTTP URLs
+// Load OpenAPI specifications from HTTP URLs with local fallback
 const loadOpenApiSpecs = async (): Promise<OpenApiSpecEntry[]> => {
   const specUrls: OpenApiSpecEntry[] = [
     {
       url: `${CONFIG.BASE_URL}/api/eda/v1/openapi.json`,
+      localPath: join(process.cwd(), 'data/eda-openapi.json'),
       reformatFunc: (tool: AAPMcpToolDefinition) => {
         tool.name = "eda." + tool.name;
         tool.pathTemplate = "/api/eda/v1" + tool.pathTemplate;
@@ -287,6 +203,7 @@ const loadOpenApiSpecs = async (): Promise<OpenApiSpecEntry[]> => {
     },
     {
       url: `${CONFIG.BASE_URL}/api/gateway/v1/docs/schema/`,
+      localPath: join(process.cwd(), 'data/gateway-schema.json'),
       reformatFunc: (tool: AAPMcpToolDefinition) => {
         tool.name = "gateway." + tool.name;
         tool.description = tool.description?.trim().split('\n\n')[0];
@@ -299,6 +216,7 @@ const loadOpenApiSpecs = async (): Promise<OpenApiSpecEntry[]> => {
     },
     {
       url: `${CONFIG.BASE_URL}/api/galaxy/v3/openapi.json`,
+      localPath: join(process.cwd(), 'data/galaxy-openapi.json'),
       reformatFunc: (tool: AAPMcpToolDefinition) => {
         if (tool.pathTemplate?.startsWith("/api/galaxy/_ui")) {
           return false
@@ -314,6 +232,7 @@ const loadOpenApiSpecs = async (): Promise<OpenApiSpecEntry[]> => {
     },
     {
       url: "https://s3.amazonaws.com/awx-public-ci-files/release_4.6/schema.json",
+      localPath: join(process.cwd(), 'data/controller-schema.json'),
       reformatFunc: (tool: AAPMcpToolDefinition) => {
         tool.pathTemplate = tool.pathTemplate?.replace("/api/v2", "/api/controller/v2");
         tool.name = tool.name.replace(/api_(.+)/, "controller.$1");
@@ -334,15 +253,24 @@ const loadOpenApiSpecs = async (): Promise<OpenApiSpecEntry[]> => {
       });
 
       if (!response.ok) {
-        console.error(`Failed to fetch ${specEntry.url}: ${response.status} ${response.statusText}`);
-        continue;
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
       specEntry.spec = await response.json();
       console.log(`Successfully loaded OpenAPI spec from: ${specEntry.url}`);
     } catch (error) {
       console.error(`Error fetching OpenAPI spec from ${specEntry.url}:`, error);
-      // Continue with other URLs even if one fails
+
+      // Try to load from local file as fallback
+      try {
+        console.log(`Attempting to load from local file: ${specEntry.localPath}`);
+        const localContent = readFileSync(specEntry.localPath!, 'utf8');
+        specEntry.spec = JSON.parse(localContent);
+        console.log(`Successfully loaded OpenAPI spec from local file: ${specEntry.localPath}`);
+      } catch (localError) {
+        console.error(`Error loading local OpenAPI spec from ${specEntry.localPath}:`, localError);
+        // Continue with other URLs even if both remote and local fail
+      }
     }
   }
 
@@ -691,6 +619,1209 @@ const mcpDeleteHandler = async (req: express.Request, res: express.Response, per
     }
   }
 };
+
+// Tool list HTML endpoint
+app.get('/tools', (req, res) => {
+  try {
+    const toolRows = allTools.map(tool => `
+      <tr>
+        <td><a href="/tools/${encodeURIComponent(tool.name)}" style="color: #007acc; text-decoration: none;">${tool.name}</a></td>
+        <td>${tool.size}</td>
+        <td>${tool.description || ''}</td>
+        <td><code>${tool.pathTemplate}</code></td>
+        <td><span class="service-${tool.service || 'unknown'}">${tool.service || 'unknown'}</span></td>
+      </tr>
+    `).join('');
+
+    const htmlContent = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AAP MCP Tools List</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #007acc;
+            padding-bottom: 10px;
+        }
+        .stats {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #007acc;
+            color: white;
+            font-weight: bold;
+        }
+        tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+        tr:hover {
+            background-color: #e6f3ff;
+        }
+        code {
+            background-color: #f4f4f4;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+        .service-eda { background-color: #e3f2fd; padding: 3px 6px; border-radius: 3px; }
+        .service-controller { background-color: #f3e5f5; padding: 3px 6px; border-radius: 3px; }
+        .service-gateway { background-color: #e8f5e8; padding: 3px 6px; border-radius: 3px; }
+        .service-galaxy { background-color: #fff3e0; padding: 3px 6px; border-radius: 3px; }
+        .service-unknown { background-color: #ffebee; padding: 3px 6px; border-radius: 3px; }
+        .actions {
+            margin-bottom: 20px;
+        }
+        .btn {
+            background-color: #007acc;
+            color: white;
+            padding: 8px 16px;
+            text-decoration: none;
+            border-radius: 4px;
+            margin-right: 10px;
+        }
+        .btn:hover {
+            background-color: #005a9e;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>AAP MCP Tools List</h1>
+
+        <div class="stats">
+            <strong>Total Tools:</strong> ${allTools.length}<br>
+            <strong>Total Size:</strong> ${allTools.reduce((sum, tool) => sum + (tool.size || 0), 0).toLocaleString()} characters
+        </div>
+
+        <div class="actions">
+            <a href="/export/tools/csv" class="btn">Download CSV</a>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Tool Name</th>
+                    <th>Size (chars)</th>
+                    <th>Description</th>
+                    <th>Path Template</th>
+                    <th>Service</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${toolRows}
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>`;
+
+    res.setHeader('Content-Type', 'text/html');
+    res.send(htmlContent);
+  } catch (error) {
+    console.error('Error generating HTML tool list:', error);
+    res.status(500).json({
+      error: 'Failed to generate tool list HTML',
+      message: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
+// Individual tool details endpoint
+app.get('/tools/:name', (req, res) => {
+  try {
+    const toolName = req.params.name;
+
+    // Find the tool
+    const tool = allTools.find(t => t.name === toolName);
+    if (!tool) {
+      return res.status(404).json({
+        error: 'Tool not found',
+        message: `Tool '${toolName}' does not exist`
+      });
+    }
+
+    // Check which personas have access to this tool
+    const personasWithAccess = [];
+    if (anonymousPersona.includes(toolName)) personasWithAccess.push({ name: 'anonymous', displayName: 'Anonymous', color: '#6c757d' });
+    if (userPersona.includes(toolName)) personasWithAccess.push({ name: 'user', displayName: 'User', color: '#28a745' });
+    if (adminPersona.includes(toolName)) personasWithAccess.push({ name: 'admin', displayName: 'Admin', color: '#dc3545' });
+
+    // Format the input schema for display
+    const formatSchema = (schema: any, level = 0) => {
+      if (!schema) return 'No schema defined';
+
+      const indent = '  '.repeat(level);
+      let result = '';
+
+      if (schema.type === 'object' && schema.properties) {
+        result += '{\n';
+        for (const [key, value] of Object.entries(schema.properties)) {
+          const prop = value as any;
+          const required = schema.required?.includes(key) ? ' (required)' : '';
+          result += `${indent}  "${key}"${required}: `;
+          if (prop.type === 'object') {
+            result += formatSchema(prop, level + 1);
+          } else {
+            result += `${prop.type || 'any'}`;
+            if (prop.description) result += ` // ${prop.description}`;
+          }
+          result += '\n';
+        }
+        result += `${indent}}`;
+      } else {
+        result = JSON.stringify(schema, null, 2);
+      }
+
+      return result;
+    };
+
+    const htmlContent = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${tool.name} - Tool Details</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #007acc;
+            padding-bottom: 10px;
+            margin-bottom: 30px;
+        }
+        .tool-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+        .service-badge {
+            background-color: #007acc;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            margin-left: 15px;
+        }
+        .service-eda { background-color: #2196f3; }
+        .service-controller { background-color: #9c27b0; }
+        .service-gateway { background-color: #4caf50; }
+        .service-galaxy { background-color: #ff9800; }
+        .service-unknown { background-color: #f44336; }
+        .navigation {
+            margin-bottom: 30px;
+        }
+        .nav-link {
+            background-color: #6c757d;
+            color: white;
+            padding: 8px 16px;
+            text-decoration: none;
+            border-radius: 4px;
+            margin-right: 10px;
+        }
+        .nav-link:hover {
+            background-color: #5a6268;
+        }
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .info-card {
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 4px solid #007acc;
+        }
+        .info-card h3 {
+            margin-top: 0;
+            color: #333;
+            font-size: 1.1em;
+        }
+        .info-value {
+            font-family: monospace;
+            background-color: #e9ecef;
+            padding: 8px;
+            border-radius: 4px;
+            word-break: break-all;
+        }
+        .description-section {
+            background-color: #e3f2fd;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+        .description-section h2 {
+            margin-top: 0;
+            color: #1976d2;
+        }
+        .schema-section {
+            background-color: #f5f5f5;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+        .schema-section h2 {
+            margin-top: 0;
+            color: #333;
+        }
+        .schema-code {
+            background-color: #2d3748;
+            color: #e2e8f0;
+            padding: 20px;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-family: 'Courier New', monospace;
+            white-space: pre;
+            font-size: 0.9em;
+        }
+        .personas-section {
+            background-color: #f0f9ff;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+        .personas-section h2 {
+            margin-top: 0;
+            color: #0369a1;
+        }
+        .persona-badges {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .persona-badge {
+            padding: 8px 16px;
+            border-radius: 20px;
+            color: white;
+            text-decoration: none;
+            font-weight: bold;
+            transition: opacity 0.3s ease;
+        }
+        .persona-badge:hover {
+            opacity: 0.8;
+            text-decoration: none;
+            color: white;
+        }
+        .no-personas {
+            color: #6c757d;
+            font-style: italic;
+        }
+        .method-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .method-get { background-color: #28a745; color: white; }
+        .method-post { background-color: #007bff; color: white; }
+        .method-put { background-color: #ffc107; color: black; }
+        .method-patch { background-color: #6f42c1; color: white; }
+        .method-delete { background-color: #dc3545; color: white; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="navigation">
+            <a href="/tools" class="nav-link">← All Tools</a>
+            <a href="/persona" class="nav-link">Personas</a>
+            <a href="/export/tools/csv" class="nav-link">Download CSV</a>
+        </div>
+
+        <div class="tool-header">
+            <h1>${tool.name}</h1>
+            <span class="service-badge service-${tool.service || 'unknown'}">${tool.service || 'unknown'}</span>
+        </div>
+
+        ${tool.description ? `
+        <div class="description-section">
+            <h2>Description</h2>
+            <p>${tool.description}</p>
+        </div>
+        ` : ''}
+
+        <div class="info-grid">
+            <div class="info-card">
+                <h3>HTTP Method</h3>
+                <div>
+                    <span class="method-badge method-${tool.method.toLowerCase()}">${tool.method.toUpperCase()}</span>
+                </div>
+            </div>
+
+            <div class="info-card">
+                <h3>Path Template</h3>
+                <div class="info-value">${tool.pathTemplate}</div>
+            </div>
+
+            <div class="info-card">
+                <h3>Tool Size</h3>
+                <div class="info-value">${tool.size.toLocaleString()} characters</div>
+            </div>
+
+            <div class="info-card">
+                <h3>Service</h3>
+                <div class="info-value">${tool.service || 'unknown'}</div>
+            </div>
+        </div>
+
+        <div class="personas-section">
+            <h2>Available to Personas</h2>
+            ${personasWithAccess.length > 0 ? `
+            <div class="persona-badges">
+                ${personasWithAccess.map(persona => `
+                <a href="/persona/${persona.name}" class="persona-badge" style="background-color: ${persona.color};">
+                    ${persona.displayName}
+                </a>
+                `).join('')}
+            </div>
+            ` : '<p class="no-personas">This tool is not available to any persona.</p>'}
+        </div>
+
+        ${tool.inputSchema ? `
+        <div class="schema-section">
+            <h2>Input Schema</h2>
+            <div class="schema-code">${formatSchema(tool.inputSchema)}</div>
+        </div>
+        ` : ''}
+
+        ${tool.parameters && tool.parameters.length > 0 ? `
+        <div class="schema-section">
+            <h2>Parameters</h2>
+            <div class="schema-code">${JSON.stringify(tool.parameters, null, 2)}</div>
+        </div>
+        ` : ''}
+    </div>
+</body>
+</html>`;
+
+    res.setHeader('Content-Type', 'text/html');
+    res.send(htmlContent);
+  } catch (error) {
+    console.error('Error generating tool details:', error);
+    res.status(500).json({
+      error: 'Failed to generate tool details',
+      message: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
+// Tool list CSV endpoint
+app.get('/export/tools/csv', (req, res) => {
+  try {
+    // Generate CSV content
+    const csvHeader = 'Tool name,size (characters),description,path template,service\n';
+    const csvRows = allTools.map(tool =>
+      `${tool.name},${tool.size},"${tool.description?.replace(/"/g, '""') || ''}",${tool.pathTemplate},${tool.service || 'unknown'}`
+    ).join('\n');
+    const csvContent = csvHeader + csvRows;
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="tool_list.csv"');
+    res.send(csvContent);
+  } catch (error) {
+    console.error('Error generating CSV tool list:', error);
+    res.status(500).json({
+      error: 'Failed to generate tool list CSV',
+      message: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
+// Persona overview endpoint
+app.get('/persona', (req, res) => {
+  try {
+    // Calculate stats for each persona
+    const personas = [
+      {
+        name: 'anonymous',
+        displayName: 'Anonymous',
+        description: 'Users without authentication - no tools available',
+        tools: filterToolsByPersona(allTools, anonymousPersona),
+        color: '#6c757d'
+      },
+      {
+        name: 'user',
+        displayName: 'User',
+        description: 'Regular authenticated users with read-only access to most tools',
+        tools: filterToolsByPersona(allTools, userPersona),
+        color: '#28a745'
+      },
+      {
+        name: 'admin',
+        displayName: 'Admin',
+        description: 'Administrators with full access to all tools including user management',
+        tools: filterToolsByPersona(allTools, adminPersona),
+        color: '#dc3545'
+      }
+    ];
+
+    // Calculate sizes and add to persona data
+    const personaStats = personas.map(persona => ({
+      ...persona,
+      toolCount: persona.tools.length,
+      totalSize: persona.tools.reduce((sum, tool) => sum + (tool.size || 0), 0)
+    }));
+
+    const htmlContent = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Personas Overview - AAP MCP</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #007acc;
+            padding-bottom: 10px;
+            margin-bottom: 30px;
+        }
+        .navigation {
+            margin-bottom: 30px;
+        }
+        .nav-link {
+            background-color: #6c757d;
+            color: white;
+            padding: 6px 12px;
+            text-decoration: none;
+            border-radius: 4px;
+            margin-right: 10px;
+            font-size: 0.9em;
+        }
+        .nav-link:hover {
+            background-color: #5a6268;
+        }
+        .persona-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .persona-card {
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            padding: 20px;
+            text-decoration: none;
+            color: inherit;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        .persona-card:hover {
+            border-color: #007acc;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            transform: translateY(-2px);
+            text-decoration: none;
+            color: inherit;
+        }
+        .persona-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        .persona-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            margin-right: 15px;
+            font-size: 1.2em;
+        }
+        .persona-title {
+            font-size: 1.3em;
+            font-weight: bold;
+            margin: 0;
+        }
+        .persona-description {
+            color: #6c757d;
+            margin-bottom: 15px;
+            line-height: 1.4;
+        }
+        .persona-stats {
+            display: flex;
+            justify-content: space-between;
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .stat {
+            text-align: center;
+        }
+        .stat-number {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #333;
+        }
+        .stat-label {
+            font-size: 0.8em;
+            color: #6c757d;
+            text-transform: uppercase;
+        }
+        .summary {
+            background-color: #e3f2fd;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+        .summary h2 {
+            margin-top: 0;
+            color: #1976d2;
+        }
+        .summary-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 20px;
+            margin-top: 15px;
+        }
+        .summary-stat {
+            text-align: center;
+            background-color: white;
+            padding: 15px;
+            border-radius: 5px;
+        }
+        .summary-stat-number {
+            font-size: 1.8em;
+            font-weight: bold;
+            color: #1976d2;
+        }
+        .summary-stat-label {
+            font-size: 0.9em;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Personas Overview</h1>
+
+        <div class="navigation">
+            <a href="/tools" class="nav-link">All Tools</a>
+            <a href="/export/tools/csv" class="nav-link">Download CSV</a>
+        </div>
+
+        <div class="summary">
+            <h2>System Summary</h2>
+            <p>The AAP MCP system uses personas to control tool access based on user permissions. Each persona provides a different level of access to the available tools.</p>
+            <div class="summary-stats">
+                <div class="summary-stat">
+                    <div class="summary-stat-number">${allTools.length}</div>
+                    <div class="summary-stat-label">Total Tools</div>
+                </div>
+                <div class="summary-stat">
+                    <div class="summary-stat-number">${personas.length}</div>
+                    <div class="summary-stat-label">Personas</div>
+                </div>
+                <div class="summary-stat">
+                    <div class="summary-stat-number">${allTools.reduce((sum, tool) => sum + (tool.size || 0), 0).toLocaleString()}</div>
+                    <div class="summary-stat-label">Total Characters</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="persona-grid">
+            ${personaStats.map(persona => `
+            <a href="/persona/${persona.name}" class="persona-card">
+                <div class="persona-header">
+                    <div class="persona-icon" style="background-color: ${persona.color};">
+                        ${persona.displayName.charAt(0)}
+                    </div>
+                    <h3 class="persona-title">${persona.displayName}</h3>
+                </div>
+                <p class="persona-description">${persona.description}</p>
+                <div class="persona-stats">
+                    <div class="stat">
+                        <div class="stat-number">${persona.toolCount}</div>
+                        <div class="stat-label">Tools</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-number">${persona.totalSize.toLocaleString()}</div>
+                        <div class="stat-label">Characters</div>
+                    </div>
+                </div>
+            </a>
+            `).join('')}
+        </div>
+    </div>
+</body>
+</html>`;
+
+    res.setHeader('Content-Type', 'text/html');
+    res.send(htmlContent);
+  } catch (error) {
+    console.error('Error generating persona overview:', error);
+    res.status(500).json({
+      error: 'Failed to generate persona overview',
+      message: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
+// Persona tools endpoint
+app.get('/persona/:name', (req, res) => {
+  try {
+    const personaName = req.params.name.toLowerCase();
+
+    // Get the persona based on the name
+    let persona: Persona;
+    let displayName: string;
+
+    switch (personaName) {
+      case 'user':
+        persona = userPersona;
+        displayName = 'User';
+        break;
+      case 'admin':
+        persona = adminPersona;
+        displayName = 'Admin';
+        break;
+      case 'anonymous':
+        persona = anonymousPersona;
+        displayName = 'Anonymous';
+        break;
+      default:
+        return res.status(404).json({
+          error: 'Persona not found',
+          message: `Persona '${req.params.name}' does not exist. Available personas: user, admin, anonymous`
+        });
+    }
+
+    // Filter tools based on persona
+    const filteredTools = filterToolsByPersona(allTools, persona);
+
+    // Calculate total size
+    const totalSize = filteredTools.reduce((sum, tool) => sum + (tool.size || 0), 0);
+
+    // Generate HTML response
+    const toolRows = filteredTools.map(tool => `
+      <tr>
+        <td><a href="/tools/${encodeURIComponent(tool.name)}" style="color: #007acc; text-decoration: none;">${tool.name}</a></td>
+        <td>${tool.size}</td>
+        <td>${tool.description || ''}</td>
+        <td><code>${tool.pathTemplate}</code></td>
+        <td><span class="service-${tool.service || 'unknown'}">${tool.service || 'unknown'}</span></td>
+      </tr>
+    `).join('');
+
+    const htmlContent = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${displayName} Persona Tools - AAP MCP</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #007acc;
+            padding-bottom: 10px;
+        }
+        .persona-badge {
+            display: inline-block;
+            background-color: #007acc;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            margin-left: 10px;
+        }
+        .stats {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .navigation {
+            margin-bottom: 20px;
+        }
+        .nav-link {
+            background-color: #6c757d;
+            color: white;
+            padding: 6px 12px;
+            text-decoration: none;
+            border-radius: 4px;
+            margin-right: 10px;
+            font-size: 0.9em;
+        }
+        .nav-link:hover {
+            background-color: #5a6268;
+        }
+        .nav-link.active {
+            background-color: #007acc;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #007acc;
+            color: white;
+            font-weight: bold;
+        }
+        tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+        tr:hover {
+            background-color: #e6f3ff;
+        }
+        code {
+            background-color: #f4f4f4;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+        .service-eda { background-color: #e3f2fd; padding: 3px 6px; border-radius: 3px; }
+        .service-controller { background-color: #f3e5f5; padding: 3px 6px; border-radius: 3px; }
+        .service-gateway { background-color: #e8f5e8; padding: 3px 6px; border-radius: 3px; }
+        .service-galaxy { background-color: #fff3e0; padding: 3px 6px; border-radius: 3px; }
+        .service-unknown { background-color: #ffebee; padding: 3px 6px; border-radius: 3px; }
+        .actions {
+            margin-bottom: 20px;
+        }
+        .btn {
+            background-color: #007acc;
+            color: white;
+            padding: 8px 16px;
+            text-decoration: none;
+            border-radius: 4px;
+            margin-right: 10px;
+        }
+        .btn:hover {
+            background-color: #005a9e;
+        }
+        .empty-state {
+            text-align: center;
+            color: #6c757d;
+            padding: 40px;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>${displayName} Persona Tools<span class="persona-badge">${filteredTools.length} tools</span></h1>
+
+        <div class="navigation">
+            <a href="/persona/anonymous" class="nav-link ${personaName === 'anonymous' ? 'active' : ''}">Anonymous</a>
+            <a href="/persona/user" class="nav-link ${personaName === 'user' ? 'active' : ''}">User</a>
+            <a href="/persona/admin" class="nav-link ${personaName === 'admin' ? 'active' : ''}">Admin</a>
+            <a href="/tools" class="nav-link">All Tools</a>
+        </div>
+
+        <div class="stats">
+            <strong>Persona:</strong> ${displayName}<br>
+            <strong>Available Tools:</strong> ${filteredTools.length}<br>
+            <strong>Total Size:</strong> ${totalSize.toLocaleString()} characters
+        </div>
+
+        ${filteredTools.length === 0 ? `
+        <div class="empty-state">
+            <p>No tools are available for the ${displayName} persona.</p>
+        </div>
+        ` : `
+        <div class="actions">
+            <a href="/export/tools/csv" class="btn">Download All Tools CSV</a>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Tool Name</th>
+                    <th>Size (chars)</th>
+                    <th>Description</th>
+                    <th>Path Template</th>
+                    <th>Service</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${toolRows}
+            </tbody>
+        </table>
+        `}
+    </div>
+</body>
+</html>`;
+
+    res.setHeader('Content-Type', 'text/html');
+    res.send(htmlContent);
+  } catch (error) {
+    console.error('Error generating persona tool list:', error);
+    res.status(500).json({
+      error: 'Failed to generate persona tool list',
+      message: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
+// Root endpoint - dashboard
+app.get('/', (req, res) => {
+  try {
+    // Calculate summary statistics
+    const anonymousTools = filterToolsByPersona(allTools, anonymousPersona);
+    const userTools = filterToolsByPersona(allTools, userPersona);
+    const adminTools = filterToolsByPersona(allTools, adminPersona);
+
+    const totalSize = allTools.reduce((sum, tool) => sum + (tool.size || 0), 0);
+    const anonymousSize = anonymousTools.reduce((sum, tool) => sum + (tool.size || 0), 0);
+    const userSize = userTools.reduce((sum, tool) => sum + (tool.size || 0), 0);
+    const adminSize = adminTools.reduce((sum, tool) => sum + (tool.size || 0), 0);
+
+    // Count tools by service
+    const serviceStats = allTools.reduce((acc, tool) => {
+      const service = tool.service || 'unknown';
+      acc[service] = (acc[service] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const htmlContent = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AAP MCP Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 40px;
+        }
+        .header h1 {
+            font-size: 3em;
+            margin: 0;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+            margin: 10px 0;
+        }
+        .main-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 30px;
+            margin-bottom: 40px;
+        }
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.3);
+        }
+        .card-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .card-icon {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 1.5em;
+            font-weight: bold;
+            margin-right: 20px;
+        }
+        .tools-icon { background: linear-gradient(45deg, #007acc, #0056b3); }
+        .personas-icon { background: linear-gradient(45deg, #28a745, #1e7e34); }
+        .card-title {
+            font-size: 1.8em;
+            font-weight: bold;
+            color: #333;
+            margin: 0;
+        }
+        .card-description {
+            color: #666;
+            margin-bottom: 25px;
+            line-height: 1.6;
+        }
+        .card-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+        .stat {
+            text-align: center;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        .stat-number {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #333;
+        }
+        .stat-label {
+            font-size: 0.8em;
+            color: #666;
+            text-transform: uppercase;
+            margin-top: 5px;
+        }
+        .btn {
+            display: inline-block;
+            background: linear-gradient(45deg, #007acc, #0056b3);
+            color: white;
+            padding: 12px 30px;
+            text-decoration: none;
+            border-radius: 25px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            text-align: center;
+        }
+        .btn:hover {
+            background: linear-gradient(45deg, #0056b3, #004085);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,123,204,0.4);
+            text-decoration: none;
+            color: white;
+        }
+        .btn-personas {
+            background: linear-gradient(45deg, #28a745, #1e7e34);
+        }
+        .btn-personas:hover {
+            background: linear-gradient(45deg, #1e7e34, #155724);
+            box-shadow: 0 5px 15px rgba(40,167,69,0.4);
+        }
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+        .summary-card {
+            background: rgba(255,255,255,0.1);
+            border-radius: 10px;
+            padding: 20px;
+            color: white;
+            text-align: center;
+        }
+        .summary-card h3 {
+            margin-top: 0;
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+        .summary-number {
+            font-size: 2em;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        .service-stats {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .service-badge {
+            padding: 5px 12px;
+            border-radius: 15px;
+            font-size: 0.9em;
+            font-weight: bold;
+        }
+        .service-eda { background: #2196f3; color: white; }
+        .service-controller { background: #9c27b0; color: white; }
+        .service-gateway { background: #4caf50; color: white; }
+        .service-galaxy { background: #ff9800; color: white; }
+        .service-unknown { background: #f44336; color: white; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>AAP MCP Dashboard</h1>
+            <p>Ansible Automation Platform Model Context Protocol Interface</p>
+        </div>
+
+        <div class="summary-grid">
+            <div class="summary-card">
+                <h3>Total Tools</h3>
+                <div class="summary-number">${allTools.length}</div>
+            </div>
+            <div class="summary-card">
+                <h3>Total Size</h3>
+                <div class="summary-number">${Math.round(totalSize / 1000)}K</div>
+                <small>characters</small>
+            </div>
+            <div class="summary-card">
+                <h3>Services</h3>
+                <div class="summary-number">${Object.keys(serviceStats).length}</div>
+            </div>
+            <div class="summary-card">
+                <h3>Personas</h3>
+                <div class="summary-number">3</div>
+            </div>
+        </div>
+
+        <div class="main-grid">
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon tools-icon">🔧</div>
+                    <h2 class="card-title">Tools</h2>
+                </div>
+                <p class="card-description">
+                    Browse and explore all available MCP tools. Each tool provides access to specific AAP functionality across different services including EDA, Controller, Gateway, and Galaxy.
+                </p>
+                <div class="card-stats">
+                    <div class="stat">
+                        <div class="stat-number">${allTools.length}</div>
+                        <div class="stat-label">Total Tools</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-number">${Object.keys(serviceStats).length}</div>
+                        <div class="stat-label">Services</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-number">${Math.round(totalSize / 1000)}K</div>
+                        <div class="stat-label">Characters</div>
+                    </div>
+                </div>
+                <div class="service-stats">
+                    ${Object.entries(serviceStats).map(([service, count]) =>
+                        `<span class="service-badge service-${service}">${service}: ${count}</span>`
+                    ).join('')}
+                </div>
+                <br><br>
+                <a href="/tools" class="btn">Browse All Tools</a>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon personas-icon">👥</div>
+                    <h2 class="card-title">Personas</h2>
+                </div>
+                <p class="card-description">
+                    Understand the different user personas and their tool access levels. Personas control which tools are available based on user permissions and authentication status.
+                </p>
+                <div class="card-stats">
+                    <div class="stat">
+                        <div class="stat-number">${anonymousTools.length} tools</div>
+                        <div class="stat-label">Anonymous</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-number">${userTools.length} tools</div>
+                        <div class="stat-label">User</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-number">${adminTools.length} tools</div>
+                        <div class="stat-label">Admin</div>
+                    </div>
+                </div>
+                <br>
+                <a href="/persona" class="btn btn-personas">Explore Personas</a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>`;
+
+    res.setHeader('Content-Type', 'text/html');
+    res.send(htmlContent);
+  } catch (error) {
+    console.error('Error generating dashboard:', error);
+    res.status(500).json({
+      error: 'Failed to generate dashboard',
+      message: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
 
 // Set up routes
 app.post('/mcp', (req, res) => mcpPostHandler(req, res));
