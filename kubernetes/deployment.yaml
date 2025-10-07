@@ -49,8 +49,21 @@ spec:
           readOnly: false
       volumes:
       - name: logs-volume
-        emptyDir:
-          sizeLimit: 500Mi
+        persistentVolumeClaim:
+          claimName: aap-mcp-logs-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: aap-mcp-logs-pvc
+  labels:
+    app: aap-mcp
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 500Mi
 ---
 apiVersion: v1
 kind: Service
