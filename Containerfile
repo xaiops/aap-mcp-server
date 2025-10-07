@@ -34,6 +34,9 @@ RUN npm ci --only=production && npm cache clean --force
 # Copy built application from builder stage
 COPY --from=builder /app/dist ./dist
 
+# Copy the configuration
+COPY aap-mcp.yaml ./
+
 # Switch to non-root user
 USER 1000
 
