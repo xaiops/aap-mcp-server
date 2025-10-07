@@ -14,7 +14,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import type { McpToolDefinition } from "openapi-mcp-generator";
 import { getToolsFromOpenApi } from "openapi-mcp-generator";
-import { readFileSync, writeFileSync } from "fs";
+import { readFileSync, writeFileSync, promises as fs } from "fs";
 import { join } from "path";
 import * as yaml from "js-yaml";
 import { ToolLogger, type LogEntry } from "./logger.js";
@@ -366,6 +366,38 @@ const getToolLogEntries = async (toolName: string): Promise<LogEntry[]> => {
   }
 };
 
+// Helper function to read all log entries across all tools
+const getAllLogEntries = async (): Promise<(LogEntry & { toolName: string })[]> => {
+  const logsDir = join(process.cwd(), 'logs');
+  const allEntries: (LogEntry & { toolName: string })[] = [];
+
+  try {
+    const files = await fs.readdir(logsDir);
+    const jsonlFiles = files.filter(file => file.endsWith('.jsonl'));
+
+    for (const file of jsonlFiles) {
+      const toolName = file.replace('.jsonl', '');
+      const entries = await getToolLogEntries(toolName);
+
+      // Add toolName to each entry
+      const entriesWithToolName = entries.map(entry => ({
+        ...entry,
+        toolName
+      }));
+
+      allEntries.push(...entriesWithToolName);
+    }
+
+    // Sort by timestamp, most recent first
+    allEntries.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+    return allEntries;
+  } catch (error) {
+    console.error('Error reading log files:', error);
+    return [];
+  }
+};
+
 const server = new Server(
   {
     name: "aap",
@@ -424,6 +456,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
 
   // Get the session ID from the transport context
   const sessionId = extra?.sessionId;
+
+  // Get user-agent from transport (if available)
+  let userAgent = 'unknown';
+  if (sessionId && transports[sessionId]) {
+    const transport = transports[sessionId] as any;
+    userAgent = transport.userAgent || 'unknown';
+  }
 
   // Get the Bearer token for this session
   const bearerToken = getBearerTokenForSession(sessionId);
@@ -490,9 +529,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
         fullUrl,
         {
           method: tool.method.toUpperCase(),
-          headers: headers,
-          body: requestOptions.body ? JSON.parse(requestOptions.body as string) : undefined,
-          args: args
+          userAgent: userAgent
         },
         result,
         response.status
@@ -519,9 +556,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
         fullUrl,
         {
           method: tool.method.toUpperCase(),
-          headers: {},
-          body: requestOptions?.body ? JSON.parse(requestOptions.body as string) : undefined,
-          args: args
+          userAgent: userAgent
         },
         { error: error instanceof Error ? error.message : String(error) },
         response?.status || 0
@@ -571,8 +606,9 @@ const mcpPostHandler = async (req: express.Request, res: express.Response, perso
           console.log(`Session initialized with ID: ${sessionId}${personaOverride ? ` with persona override: ${personaOverride}` : ''}`);
           transports[sessionId] = transport;
 
-          // Store persona override in transport for later access
+          // Store persona override and user-agent in transport for later access
           (transport as any).personaOverride = personaOverride;
+          (transport as any).userAgent = req.headers['user-agent'] || 'unknown';
 
           // Extract and validate the bearer token
           const token = extractBearerToken(authHeader);
@@ -1775,6 +1811,304 @@ app.get('/persona/:name', (req, res) => {
   }
 });
 
+// Logs overview endpoint
+app.get('/logs', async (req, res) => {
+  try {
+    if (!recordApiQueries) {
+      return res.status(404).json({
+        error: 'Logging disabled',
+        message: 'API query recording is disabled. Enable it in aap-mcp.yaml to view logs.'
+      });
+    }
+
+    // Get all log entries
+    const allEntries = await getAllLogEntries();
+    const last300 = allEntries.slice(0, 300);
+
+    // Helper function to format timestamp for display
+    const formatTimestamp = (timestamp: string) => {
+      return new Date(timestamp).toLocaleString();
+    };
+
+    // Helper function to get status color
+    const getStatusColor = (code: number) => {
+      if (code >= 200 && code < 300) return '#28a745'; // green
+      if (code >= 300 && code < 400) return '#ffc107'; // yellow
+      if (code >= 400 && code < 500) return '#fd7e14'; // orange
+      if (code >= 500) return '#dc3545'; // red
+      return '#6c757d'; // gray
+    };
+
+    // Helper function to get status text
+    const getStatusText = (code: number) => {
+      if (code >= 200 && code < 300) return 'Success';
+      if (code >= 300 && code < 400) return 'Redirect';
+      if (code >= 400 && code < 500) return 'Client Error';
+      if (code >= 500) return 'Server Error';
+      return 'Unknown';
+    };
+
+    // Calculate summary statistics
+    const totalRequests = allEntries.length;
+    const statusCodeSummary = last300.reduce((acc, entry) => {
+      const code = entry.return_code;
+      acc[code] = (acc[code] || 0) + 1;
+      return acc;
+    }, {} as Record<number, number>);
+
+    const toolSummary = last300.reduce((acc, entry) => {
+      acc[entry.toolName] = (acc[entry.toolName] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const htmlContent = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Request Logs - AAP MCP</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #007acc;
+            padding-bottom: 10px;
+            margin-bottom: 30px;
+        }
+        .navigation {
+            margin-bottom: 30px;
+        }
+        .nav-link {
+            background-color: #6c757d;
+            color: white;
+            padding: 6px 12px;
+            text-decoration: none;
+            border-radius: 4px;
+            margin-right: 10px;
+            font-size: 0.9em;
+        }
+        .nav-link:hover {
+            background-color: #5a6268;
+        }
+        .summary {
+            background-color: #e3f2fd;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+        .summary h2 {
+            margin-top: 0;
+            color: #1976d2;
+        }
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-top: 15px;
+        }
+        .summary-card {
+            background-color: white;
+            padding: 15px;
+            border-radius: 5px;
+            border: 1px solid #e9ecef;
+        }
+        .summary-card h4 {
+            margin-top: 0;
+            color: #495057;
+        }
+        .logs-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            font-size: 0.9em;
+        }
+        .logs-table th, .logs-table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        .logs-table th {
+            background-color: #007acc;
+            color: white;
+            font-weight: bold;
+            position: sticky;
+            top: 0;
+        }
+        .logs-table tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+        .logs-table tr:hover {
+            background-color: #e6f3ff;
+        }
+        .status-badge {
+            color: white;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.8em;
+            font-weight: bold;
+            min-width: 60px;
+            display: inline-block;
+            text-align: center;
+        }
+        .tool-link {
+            color: #007acc;
+            text-decoration: none;
+        }
+        .tool-link:hover {
+            text-decoration: underline;
+        }
+        .endpoint {
+            font-family: monospace;
+            font-size: 0.8em;
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .user-agent {
+            font-size: 0.8em;
+            color: #6c757d;
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .timestamp {
+            font-size: 0.8em;
+            white-space: nowrap;
+        }
+        .method-badge {
+            padding: 2px 4px;
+            border-radius: 2px;
+            font-size: 0.7em;
+            font-weight: bold;
+            text-transform: uppercase;
+            min-width: 45px;
+            display: inline-block;
+            text-align: center;
+        }
+        .method-get { background-color: #28a745; color: white; }
+        .method-post { background-color: #007bff; color: white; }
+        .method-put { background-color: #ffc107; color: black; }
+        .method-patch { background-color: #6f42c1; color: white; }
+        .method-delete { background-color: #dc3545; color: white; }
+        .code-summary, .tool-summary {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .code-entry, .tool-entry {
+            padding: 4px 8px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+            font-size: 0.8em;
+            border-left: 3px solid #6c757d;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Request Logs<span style="color: #6c757d; font-size: 0.7em; margin-left: 15px;">Last 300 requests</span></h1>
+
+        <div class="navigation">
+            <a href="/" class="nav-link">Dashboard</a>
+            <a href="/tools" class="nav-link">Tools</a>
+            <a href="/services" class="nav-link">Services</a>
+            <a href="/persona" class="nav-link">Personas</a>
+        </div>
+
+        <div class="summary">
+            <h2>Log Summary</h2>
+            <p>Showing the last 300 requests out of ${totalRequests.toLocaleString()} total logged requests.</p>
+
+            <div class="summary-grid">
+                <div class="summary-card">
+                    <h4>Status Codes</h4>
+                    <div class="code-summary">
+                        ${Object.entries(statusCodeSummary).map(([code, count]) => `
+                        <div class="code-entry" style="border-left-color: ${getStatusColor(Number(code))};">
+                            ${code}: ${count}
+                        </div>
+                        `).join('')}
+                    </div>
+                </div>
+
+                <div class="summary-card">
+                    <h4>Most Used Tools</h4>
+                    <div class="tool-summary">
+                        ${Object.entries(toolSummary)
+                          .sort(([,a], [,b]) => b - a)
+                          .slice(0, 8)
+                          .map(([tool, count]) => `
+                        <div class="tool-entry">
+                            ${tool}: ${count}
+                        </div>
+                        `).join('')}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <table class="logs-table">
+            <thead>
+                <tr>
+                    <th>Timestamp</th>
+                    <th>Tool</th>
+                    <th>Method</th>
+                    <th>Status</th>
+                    <th>Endpoint</th>
+                    <th>User Agent</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${last300.map(entry => `
+                <tr>
+                    <td class="timestamp">${formatTimestamp(entry.timestamp)}</td>
+                    <td>
+                        <a href="/tools/${encodeURIComponent(entry.toolName)}" class="tool-link">${entry.toolName}</a>
+                    </td>
+                    <td>
+                        <span class="method-badge method-${(entry.payload?.method || 'unknown').toLowerCase()}">${entry.payload?.method || 'N/A'}</span>
+                    </td>
+                    <td>
+                        <span class="status-badge" style="background-color: ${getStatusColor(entry.return_code)};">
+                            ${entry.return_code} ${getStatusText(entry.return_code)}
+                        </span>
+                    </td>
+                    <td class="endpoint" title="${entry.endpoint}">${entry.endpoint}</td>
+                    <td class="user-agent" title="${entry.payload?.userAgent || 'unknown'}">${entry.payload?.userAgent || 'unknown'}</td>
+                </tr>
+                `).join('')}
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>`;
+
+    res.setHeader('Content-Type', 'text/html');
+    res.send(htmlContent);
+  } catch (error) {
+    console.error('Error generating logs overview:', error);
+    res.status(500).json({
+      error: 'Failed to generate logs overview',
+      message: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
 // Services overview endpoint
 app.get('/services', (req, res) => {
   try {
@@ -2521,6 +2855,34 @@ app.get('/', (req, res) => {
                 <br>
                 <a href="/persona" class="btn btn-personas">Explore Personas</a>
             </div>
+
+            ${recordApiQueries ? `
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon" style="background: linear-gradient(45deg, #17a2b8, #138496);">📊</div>
+                    <h2 class="card-title">Request Logs</h2>
+                </div>
+                <p class="card-description">
+                    View detailed logs of API requests made through the MCP interface. Monitor tool usage, response codes, and client information for debugging and analytics.
+                </p>
+                <div class="card-stats">
+                    <div class="stat">
+                        <div class="stat-number">300</div>
+                        <div class="stat-label">Recent Requests</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-number">Live</div>
+                        <div class="stat-label">Real-time</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-number">JSONL</div>
+                        <div class="stat-label">Format</div>
+                    </div>
+                </div>
+                <br>
+                <a href="/logs" class="btn" style="background: linear-gradient(45deg, #17a2b8, #138496);">View Request Logs</a>
+            </div>
+            ` : ''}
         </div>
     </div>
 </body>
