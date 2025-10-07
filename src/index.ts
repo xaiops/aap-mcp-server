@@ -24,7 +24,7 @@ config();
 
 // Configuration constants
 const CONFIG = {
-  BASE_URL: "http://localhost:44926",
+  BASE_URL: process.env.BASE_URL || "http://localhost:44926",
   MCP_PORT: process.env.MCP_PORT ? parseInt(process.env.MCP_PORT, 10) : 3000,
   FALLBACK_BEARER_TOKEN: process.env.BEARER_TOKEN_OAUTH2_AUTHENTICATION,
 } as const;
@@ -34,6 +34,7 @@ type Persona = string[];
 
 interface PersonaConfig {
   record_api_queries?: boolean;
+  'ignore-certificate-errors'?: boolean;
   personas: Record<string, string[]>;
 }
 
@@ -54,9 +55,22 @@ const loadPersonasFromConfig = (): PersonaConfig => {
 const personaConfig = loadPersonasFromConfig();
 const allPersonas: Record<string, Persona> = personaConfig.personas;
 
+// Log configuration settings
+console.log(`BASE_URL: ${CONFIG.BASE_URL}`);
+
 // Get API query recording setting (defaults to false)
 const recordApiQueries = personaConfig.record_api_queries ?? false;
 console.log(`API query recording: ${recordApiQueries ? 'ENABLED' : 'DISABLED'}`);
+
+// Get certificate validation setting (defaults to false)
+const ignoreCertificateErrors = personaConfig['ignore-certificate-errors'] ?? false;
+console.log(`Certificate validation: ${ignoreCertificateErrors ? 'DISABLED' : 'ENABLED'}`);
+
+// Configure HTTPS certificate validation globally
+if (ignoreCertificateErrors) {
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+  console.warn('WARNING: HTTPS certificate validation is disabled. This should only be used in development/testing environments.');
+}
 
 // TypeScript interfaces
 interface AAPMcpToolDefinition extends McpToolDefinition {
@@ -285,6 +299,7 @@ const generateTools = async (): Promise<ToolWithSize[]> => {
   let rawToolList: AAPMcpToolDefinition[] = [];
 
   for (const spec of openApiSpecs) {
+    console.log(`Loading ${spec.service}`);
     try {
       const tools = await getToolsFromOpenApi(spec.spec, {
         baseUrl: CONFIG.BASE_URL,
