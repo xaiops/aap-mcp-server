@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aap-mcp
+  labels:
+    app: aap-mcp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: aap-mcp
+  template:
+    metadata:
+      labels:
+        app: aap-mcp
+    spec:
+      containers:
+      - name: aap-mcp
+        image: quay.io/goneri/aap-mcp
+        ports:
+        - containerPort: 3000
+        env:
+        - name: PORT
+          value: "3000"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aap-mcp-service
+  labels:
+    app: aap-mcp
+spec:
+  selector:
+    app: aap-mcp
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 3000
+  type: ClusterIP
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: aap-mcp-route
+  labels:
+    app: aap-mcp
+spec:
+  to:
+    kind: Service
+    name: aap-mcp-service
+  port:
+    targetPort: 3000
+  tls:
+    termination: edge
