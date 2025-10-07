@@ -1,138 +1,46 @@
 ---
+# Configuration for API query recording
+record_api_queries: true
+
 personas:
-  user:
-    # EDA tools for regular users
-    - "eda.activations_list"
-    - "eda.activations_retrieve"
-    - "eda.projects_list"
-    - "eda.projects_retrieve"
-    - "eda.projects_partial_update"
-    - "eda.projects_sync_create"
-    - "eda.rulebooks_list"
-    - "eda.rulebooks_retrieve"
-    - "eda.decision_environments_list"
-    - "eda.decision_environments_retrieve"
-    - "eda.audit_rules_list"
-    - "eda.audit_rules_retrieve"
-    - "eda.event_streams_list"
-    - "eda.event_streams_retrieve"
-
-    # Controller tools for job management
-    - "controller.jobs_list"
-    - "controller.jobs_read"
-    - "controller.jobs_stdout_read"
-    - "controller.job_templates_list"
-    - "controller.job_templates_read"
-    - "controller.job_templates_launch_read"
-    - "controller.inventories_list"
-    - "controller.inventories_read"
-    - "controller.projects_list"
-    - "controller.projects_read"
-    - "controller.organizations_list"
-    - "controller.organizations_read"
-
-    # Galaxy tools for content
-    - "galaxy.collections_all_get"
-    - "galaxy.collection_versions_all_get"
-
-  admin:
-    # Include all user persona tools
-    - "eda.activations_list"
-    - "eda.activations_retrieve"
-    - "eda.projects_list"
-    - "eda.projects_retrieve"
-    - "eda.projects_partial_update"
-    - "eda.projects_sync_create"
-    - "eda.rulebooks_list"
-    - "eda.rulebooks_retrieve"
-    - "eda.decision_environments_list"
-    - "eda.decision_environments_retrieve"
-    - "eda.audit_rules_list"
-    - "eda.audit_rules_retrieve"
-    - "eda.event_streams_list"
-    - "eda.event_streams_retrieve"
-    - "controller.jobs_list"
-    - "controller.jobs_read"
-    - "controller.jobs_stdout_read"
-    - "controller.job_templates_list"
-    - "controller.job_templates_read"
-    - "controller.job_templates_launch_read"
-    - "controller.inventories_list"
-    - "controller.inventories_read"
-    - "controller.projects_list"
-    - "controller.projects_read"
-    - "controller.organizations_list"
-    - "controller.organizations_read"
-    - "galaxy.collections_all_get"
-    - "galaxy.collection_versions_all_get"
-
-    # Additional admin-only tools
-    - "eda.users_list"
-    - "eda.users_retrieve"
-    - "eda.users_partial_update"
-    - "eda.teams_list"
-    - "eda.teams_retrieve"
-    - "eda.organizations_list"
-    - "eda.organizations_retrieve"
-    - "eda.eda_credentials_list"
-    - "eda.eda_credentials_retrieve"
-    - "eda.eda_credentials_create"
-    - "eda.eda_credentials_partial_update"
-    - "eda.eda_credentials_destroy"
-    - "eda.credential_types_list"
-    - "eda.credential_types_retrieve"
-    - "eda.credential_types_create"
-    - "eda.credential_types_partial_update"
-    - "eda.credential_types_destroy"
-    - "eda.decision_environments_create"
-    - "eda.decision_environments_partial_update"
-    - "eda.decision_environments_destroy"
-    - "eda.projects_destroy"
-    - "eda.activations_destroy"
-    - "eda.role_definitions_list"
-    - "eda.role_definitions_retrieve"
-    - "eda.role_definitions_create"
-    - "eda.role_definitions_update"
-    - "eda.role_user_assignments_list"
-    - "eda.role_user_assignments_create"
-    - "eda.role_team_assignments_list"
-    - "eda.role_team_assignments_create"
-
-    # Gateway admin tools
-    - "gateway.users_list"
-    - "gateway.users_retrieve"
-    - "gateway.users_update"
-    - "gateway.users_partial_update"
-    - "gateway.users_destroy"
-    - "gateway.teams_list"
-    - "gateway.teams_retrieve"
-    - "gateway.teams_create"
-    - "gateway.teams_update"
-    - "gateway.teams_partial_update"
-    - "gateway.teams_destroy"
-    - "gateway.organizations_list"
-    - "gateway.organizations_retrieve"
-    - "gateway.organizations_create"
-    - "gateway.organizations_update"
-    - "gateway.organizations_partial_update"
-    - "gateway.organizations_destroy"
-    - "gateway.role_definitions_list"
-    - "gateway.role_definitions_retrieve"
-    - "gateway.role_definitions_create"
-    - "gateway.role_definitions_update"
-    - "gateway.role_definitions_partial_update"
-    - "gateway.role_definitions_destroy"
-
-    # Controller admin tools
-    - "controller.users_create"
-    - "controller.credentials_list"
-    - "controller.credentials_read"
-    - "controller.credentials_delete"
-    - "controller.inventory_sources_list"
-    - "controller.inventory_sources_read"
-    - "controller.instances_list"
-    - "controller.instances_read"
-    - "controller.instance_groups_list"
-    - "controller.instance_groups_read"
-
-  anonymous: []
+  operator:
+    - controller.activity_stream_list
+    - controller.analytics_list
+    - controller.config_list
+    - controller.groups_list
+    - controller.groups_create
+    - controller.hosts_list
+    - controller.hosts_read
+    - controller.hosts_variable_data_read
+    - controller.instance_groups_list
+    - controller.instance_groups_create
+    - controller.instances_create
+    - controller.instances_read
+    - controller.inventories_list
+    - controller.inventory_sources_update_create
+    - controller.job_templates_list
+    - controller.job_templates_launch_create
+    - controller.jobs_list
+    - controller.jobs_read
+    - controller.jobs_cancel_create
+    - controller.jobs_job_events_list
+    - controller.jobs_relaunch_create
+    - controller.jobs_stdout_read
+    - controller.mesh_visualizer_list
+    - controller.metrics_list
+    - controller.ping_list
+    - controller.projects_list
+    - controller.workflow_job_templates_launch_create
+    - controller.workflow_jobs_read
+    - controller.workflow_jobs_cancel_create
+    - controller.workflow_jobs_relaunch_create
+    - controller.workflow_jobs_read
+    - controller.workflow_jobs_cancel_create
+    - controller.workflow_jobs_relaunch_create
+    - eda.activation_instances_list
+    - eda.activation_instances_logs_list
+    - gateway.activitystream_list
+    - gateway.authenticators_list
+    - gateway.feature_flags_state_retrieve
+    - gateway.http_ports_list
+    - gateway.http_ports_create

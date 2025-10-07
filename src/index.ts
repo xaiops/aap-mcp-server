@@ -17,6 +17,7 @@ import { getToolsFromOpenApi } from "openapi-mcp-generator";
 import { readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import * as yaml from "js-yaml";
+import { ToolLogger, type LogEntry } from "./logger.js";
 
 // Load environment variables
 config();
@@ -32,11 +33,8 @@ const CONFIG = {
 type Persona = string[];
 
 interface PersonaConfig {
-  personas: {
-    user: string[];
-    admin: string[];
-    anonymous: string[];
-  };
+  record_api_queries?: boolean;
+  personas: Record<string, string[]>;
 }
 
 // Load personas from configuration file
@@ -54,11 +52,11 @@ const loadPersonasFromConfig = (): PersonaConfig => {
 
 // Load personas from configuration
 const personaConfig = loadPersonasFromConfig();
-const anonymousPersona: Persona = personaConfig.personas.anonymous;
+const allPersonas: Record<string, Persona> = personaConfig.personas;
 
-// Define personas from configuration
-const userPersona: Persona = personaConfig.personas.user;
-const adminPersona: Persona = personaConfig.personas.admin;
+// Get API query recording setting (defaults to false)
+const recordApiQueries = personaConfig.record_api_queries ?? false;
+console.log(`API query recording: ${recordApiQueries ? 'ENABLED' : 'DISABLED'}`);
 
 // TypeScript interfaces
 interface AAPMcpToolDefinition extends McpToolDefinition {
@@ -161,26 +159,29 @@ const storeSessionData = (sessionId: string, token: string, permissions: {is_sup
 const getUserPersona = (sessionId: string | undefined, personaOverride?: string): Persona => {
   // If a persona override is specified, use it regardless of permissions
   if (personaOverride) {
-    switch (personaOverride.toLowerCase()) {
-      case 'anonymous':
-        return anonymousPersona;
-      case 'user':
-        return userPersona;
-      case 'admin':
-        return adminPersona;
-      default:
-        console.warn(`Unknown persona override: ${personaOverride}, defaulting to anonymous`);
-        return anonymousPersona;
+    const personaName = personaOverride.toLowerCase();
+    if (allPersonas[personaName]) {
+      return allPersonas[personaName];
+    } else {
+      console.warn(`Unknown persona override: ${personaOverride}, defaulting to anonymous`);
+      return allPersonas['anonymous'] || [];
     }
   }
 
   if (!sessionId || !sessionData[sessionId]) {
-    return anonymousPersona; // Default to anonymous persona for unauthenticated users
+    return allPersonas['anonymous'] || []; // Default to anonymous persona for unauthenticated users
   }
 
   const session = sessionData[sessionId];
-  // Administrators get the full admin persona, regular users get the limited user persona
-  return session.is_superuser ? adminPersona : userPersona;
+  // Administrators get the admin persona, regular users get the user persona
+  if (session.is_superuser && allPersonas['admin']) {
+    return allPersonas['admin'];
+  } else if (allPersonas['user']) {
+    return allPersonas['user'];
+  } else {
+    // Fallback to anonymous if user/admin personas don't exist
+    return allPersonas['anonymous'] || [];
+  }
 };
 
 // Filter tools based on persona
@@ -334,6 +335,22 @@ const generateTools = async (): Promise<ToolWithSize[]> => {
 
 let allTools: ToolWithSize[] = [];
 
+// Initialize logger
+const toolLogger = new ToolLogger();
+
+// Helper function to read log entries for a tool
+const getToolLogEntries = async (toolName: string): Promise<LogEntry[]> => {
+  const logFile = join(process.cwd(), 'logs', `${toolName}.jsonl`);
+  try {
+    const content = readFileSync(logFile, 'utf8');
+    const lines = content.trim().split('\n').filter(line => line);
+    return lines.map(line => JSON.parse(line) as LogEntry);
+  } catch (error) {
+    // Log file doesn't exist or can't be read
+    return [];
+  }
+};
+
 const server = new Server(
   {
     name: "aap",
@@ -360,9 +377,14 @@ server.setRequestHandler(ListToolsRequestSchema, async (request, extra) => {
   // Filter tools based on persona
   const filteredTools = filterToolsByPersona(allTools, persona);
 
-  let personaType = 'anonymous';
-  if (persona === userPersona) personaType = 'user';
-  else if (persona === adminPersona) personaType = 'admin';
+  // Determine persona type by comparing with known personas
+  let personaType = 'unknown';
+  for (const [name, tools] of Object.entries(allPersonas)) {
+    if (persona === tools) {
+      personaType = name;
+      break;
+    }
+  }
 
   const overrideInfo = personaOverride ? ` (override: ${personaOverride})` : '';
   console.log(`Returning ${filteredTools.length} tools for ${personaType} persona${overrideInfo} (session: ${sessionId || 'none'})`);
@@ -392,6 +414,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
   const bearerToken = getBearerTokenForSession(sessionId);
 
   // Execute the tool by making HTTP request
+  let result: any;
+  let response: Response | undefined;
+  let fullUrl: string = `${CONFIG.BASE_URL}${tool.pathTemplate}`;
+  let requestOptions: RequestInit | undefined;
+
   try {
     // Build URL from path template and parameters
     let url = tool.pathTemplate;
@@ -418,7 +445,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
     }
 
     // Prepare request options
-    const requestOptions: RequestInit = {
+    requestOptions = {
       method: tool.method.toUpperCase(),
       headers
     };
@@ -430,16 +457,31 @@ server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
     }
 
     // Make HTTP request
-    const fullUrl = `${CONFIG.BASE_URL}${url}`;
+    fullUrl = `${CONFIG.BASE_URL}${url}`;
     console.log(`Calling: ${fullUrl}`);
-    const response = await fetch(fullUrl, requestOptions);
+    response = await fetch(fullUrl, requestOptions);
 
-    let result;
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
       result = await response.json();
     } else {
       result = await response.text();
+    }
+
+    // Log the tool access (only if recording is enabled)
+    if (recordApiQueries) {
+      await toolLogger.logToolAccess(
+        tool,
+        fullUrl,
+        {
+          method: tool.method.toUpperCase(),
+          headers: headers,
+          body: requestOptions.body ? JSON.parse(requestOptions.body as string) : undefined,
+          args: args
+        },
+        result,
+        response.status
+      );
     }
 
     if (!response.ok) {
@@ -455,6 +497,22 @@ server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
       ],
     };
   } catch (error) {
+    // Log the failed tool access (only if recording is enabled)
+    if (recordApiQueries) {
+      await toolLogger.logToolAccess(
+        tool,
+        fullUrl,
+        {
+          method: tool.method.toUpperCase(),
+          headers: {},
+          body: requestOptions?.body ? JSON.parse(requestOptions.body as string) : undefined,
+          args: args
+        },
+        { error: error instanceof Error ? error.message : String(error) },
+        response?.status || 0
+      );
+    }
+
     throw new Error(`Tool execution failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 });
@@ -697,6 +755,7 @@ app.get('/tools', (req, res) => {
         .service-gateway { background-color: #e8f5e8; padding: 3px 6px; border-radius: 3px; }
         .service-galaxy { background-color: #fff3e0; padding: 3px 6px; border-radius: 3px; }
         .service-unknown { background-color: #ffebee; padding: 3px 6px; border-radius: 3px; }
+        .service-operator { background-color: #e1f5fe; padding: 3px 6px; border-radius: 3px; }
         .actions {
             margin-bottom: 20px;
         }
@@ -756,7 +815,7 @@ app.get('/tools', (req, res) => {
 });
 
 // Individual tool details endpoint
-app.get('/tools/:name', (req, res) => {
+app.get('/tools/:name', async (req, res) => {
   try {
     const toolName = req.params.name;
 
@@ -769,11 +828,58 @@ app.get('/tools/:name', (req, res) => {
       });
     }
 
+    // Get log entries for this tool
+    const logEntries = await getToolLogEntries(toolName);
+    const last10Calls = logEntries.slice(-10).reverse(); // Get last 10, most recent first
+
+    // Calculate error code summary
+    const errorCodeSummary = logEntries.reduce((acc, entry) => {
+      const code = entry.return_code;
+      acc[code] = (acc[code] || 0) + 1;
+      return acc;
+    }, {} as Record<number, number>);
+
     // Check which personas have access to this tool
     const personasWithAccess = [];
-    if (anonymousPersona.includes(toolName)) personasWithAccess.push({ name: 'anonymous', displayName: 'Anonymous', color: '#6c757d' });
-    if (userPersona.includes(toolName)) personasWithAccess.push({ name: 'user', displayName: 'User', color: '#28a745' });
-    if (adminPersona.includes(toolName)) personasWithAccess.push({ name: 'admin', displayName: 'Admin', color: '#dc3545' });
+    const personaColors: Record<string, string> = {
+      'anonymous': '#6c757d',
+      'user': '#28a745',
+      'admin': '#dc3545',
+      'operator': '#17a2b8'
+    };
+
+    for (const [personaName, personaTools] of Object.entries(allPersonas)) {
+      if (personaTools.includes(toolName)) {
+        personasWithAccess.push({
+          name: personaName,
+          displayName: personaName.charAt(0).toUpperCase() + personaName.slice(1),
+          color: personaColors[personaName] || '#6c757d'
+        });
+      }
+    }
+
+    // Helper function to format timestamp for display
+    const formatTimestamp = (timestamp: string) => {
+      return new Date(timestamp).toLocaleString();
+    };
+
+    // Helper function to get status color
+    const getStatusColor = (code: number) => {
+      if (code >= 200 && code < 300) return '#28a745'; // green
+      if (code >= 300 && code < 400) return '#ffc107'; // yellow
+      if (code >= 400 && code < 500) return '#fd7e14'; // orange
+      if (code >= 500) return '#dc3545'; // red
+      return '#6c757d'; // gray
+    };
+
+    // Helper function to get status text
+    const getStatusText = (code: number) => {
+      if (code >= 200 && code < 300) return 'Success';
+      if (code >= 300 && code < 400) return 'Redirect';
+      if (code >= 400 && code < 500) return 'Client Error';
+      if (code >= 500) return 'Server Error';
+      return 'Unknown';
+    };
 
     // Format the input schema for display
     const formatSchema = (schema: any, level = 0) => {
@@ -963,6 +1069,92 @@ app.get('/tools/:name', (req, res) => {
         .method-put { background-color: #ffc107; color: black; }
         .method-patch { background-color: #6f42c1; color: white; }
         .method-delete { background-color: #dc3545; color: white; }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 20px;
+            margin-top: 15px;
+        }
+        .stat-card {
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #e9ecef;
+        }
+        .stat-card h4 {
+            margin-top: 0;
+            color: #495057;
+        }
+        .code-summary {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .code-entry {
+            display: flex;
+            align-items: center;
+            padding: 8px 12px;
+            background-color: white;
+            border-radius: 4px;
+            gap: 10px;
+        }
+        .code-number {
+            font-weight: bold;
+            font-family: monospace;
+            min-width: 40px;
+        }
+        .code-text {
+            flex: 1;
+            color: #6c757d;
+        }
+        .code-count {
+            font-size: 0.9em;
+            color: #495057;
+        }
+        .calls-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .call-entry {
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 15px;
+            background-color: white;
+        }
+        .call-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .call-timestamp {
+            font-size: 0.9em;
+            color: #6c757d;
+        }
+        .call-status {
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            font-weight: bold;
+        }
+        .call-endpoint {
+            font-family: monospace;
+            background-color: #f8f9fa;
+            padding: 8px;
+            border-radius: 4px;
+            word-break: break-all;
+            font-size: 0.9em;
+        }
+        .call-error {
+            margin-top: 8px;
+            padding: 8px;
+            background-color: #f8d7da;
+            color: #721c24;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
     </style>
 </head>
 <body>
@@ -977,6 +1169,49 @@ app.get('/tools/:name', (req, res) => {
             <h1>${tool.name}</h1>
             <span class="service-badge service-${tool.service || 'unknown'}">${tool.service || 'unknown'}</span>
         </div>
+
+        <div class="schema-section">
+            <h2>Usage Statistics</h2>
+            ${logEntries.length > 0 ? `
+            <p><strong>Total Calls:</strong> ${logEntries.length}</p>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h4>Response Codes</h4>
+                    <div class="code-summary">
+                        ${Object.entries(errorCodeSummary).map(([code, count]) => `
+                        <div class="code-entry" style="border-left: 4px solid ${getStatusColor(Number(code))};">
+                            <span class="code-number">${code}</span>
+                            <span class="code-text">${getStatusText(Number(code))}</span>
+                            <span class="code-count">${count} calls</span>
+                        </div>
+                        `).join('')}
+                    </div>
+                </div>
+            </div>
+            ` : '<p><em>No usage data available</em></p>'}
+        </div>
+
+        ${last10Calls.length > 0 ? `
+        <div class="schema-section">
+            <h2>Recent Calls (Last 10)</h2>
+            <div class="calls-list">
+                ${last10Calls.map(entry => `
+                <div class="call-entry">
+                    <div class="call-header">
+                        <span class="call-timestamp">${formatTimestamp(entry.timestamp)}</span>
+                        <span class="call-status" style="background-color: ${getStatusColor(entry.return_code)};">
+                            ${entry.return_code} ${getStatusText(entry.return_code)}
+                        </span>
+                    </div>
+                    <div class="call-endpoint">${entry.endpoint}</div>
+                    ${entry.response && typeof entry.response === 'object' && entry.response.error ? `
+                    <div class="call-error">Error: ${entry.response.error}</div>
+                    ` : ''}
+                </div>
+                `).join('')}
+            </div>
+        </div>
+        ` : ''}
 
         ${tool.description ? `
         <div class="description-section">
@@ -1075,30 +1310,34 @@ app.get('/export/tools/csv', (req, res) => {
 // Persona overview endpoint
 app.get('/persona', (req, res) => {
   try {
-    // Calculate stats for each persona
-    const personas = [
-      {
-        name: 'anonymous',
-        displayName: 'Anonymous',
-        description: 'Users without authentication - no tools available',
-        tools: filterToolsByPersona(allTools, anonymousPersona),
+    // Define persona descriptions and colors
+    const personaConfig: Record<string, { description: string; color: string }> = {
+      'anonymous': {
+        description: 'Users without authentication - limited or no tool access',
         color: '#6c757d'
       },
-      {
-        name: 'user',
-        displayName: 'User',
+      'user': {
         description: 'Regular authenticated users with read-only access to most tools',
-        tools: filterToolsByPersona(allTools, userPersona),
         color: '#28a745'
       },
-      {
-        name: 'admin',
-        displayName: 'Admin',
+      'admin': {
         description: 'Administrators with full access to all tools including user management',
-        tools: filterToolsByPersona(allTools, adminPersona),
         color: '#dc3545'
+      },
+      'operator': {
+        description: 'Operators with access to operational and monitoring tools',
+        color: '#17a2b8'
       }
-    ];
+    };
+
+    // Calculate stats for each persona
+    const personas = Object.entries(allPersonas).map(([personaName, personaTools]) => ({
+      name: personaName,
+      displayName: personaName.charAt(0).toUpperCase() + personaName.slice(1),
+      description: personaConfig[personaName]?.description || `${personaName.charAt(0).toUpperCase() + personaName.slice(1)} persona with specific tool access`,
+      tools: filterToolsByPersona(allTools, personaTools),
+      color: personaConfig[personaName]?.color || '#6c757d'
+    }));
 
     // Calculate sizes and add to persona data
     const personaStats = personas.map(persona => ({
@@ -1323,28 +1562,16 @@ app.get('/persona/:name', (req, res) => {
     const personaName = req.params.name.toLowerCase();
 
     // Get the persona based on the name
-    let persona: Persona;
-    let displayName: string;
-
-    switch (personaName) {
-      case 'user':
-        persona = userPersona;
-        displayName = 'User';
-        break;
-      case 'admin':
-        persona = adminPersona;
-        displayName = 'Admin';
-        break;
-      case 'anonymous':
-        persona = anonymousPersona;
-        displayName = 'Anonymous';
-        break;
-      default:
-        return res.status(404).json({
-          error: 'Persona not found',
-          message: `Persona '${req.params.name}' does not exist. Available personas: user, admin, anonymous`
-        });
+    const persona = allPersonas[personaName];
+    if (!persona) {
+      const availablePersonas = Object.keys(allPersonas).join(', ');
+      return res.status(404).json({
+        error: 'Persona not found',
+        message: `Persona '${req.params.name}' does not exist. Available personas: ${availablePersonas}`
+      });
     }
+
+    const displayName = personaName.charAt(0).toUpperCase() + personaName.slice(1);
 
     // Filter tools based on persona
     const filteredTools = filterToolsByPersona(allTools, persona);
@@ -1454,6 +1681,7 @@ app.get('/persona/:name', (req, res) => {
         .service-gateway { background-color: #e8f5e8; padding: 3px 6px; border-radius: 3px; }
         .service-galaxy { background-color: #fff3e0; padding: 3px 6px; border-radius: 3px; }
         .service-unknown { background-color: #ffebee; padding: 3px 6px; border-radius: 3px; }
+        .service-operator { background-color: #e1f5fe; padding: 3px 6px; border-radius: 3px; }
         .actions {
             margin-bottom: 20px;
         }
@@ -1481,9 +1709,9 @@ app.get('/persona/:name', (req, res) => {
         <h1>${displayName} Persona Tools<span class="persona-badge">${filteredTools.length} tools</span></h1>
 
         <div class="navigation">
-            <a href="/persona/anonymous" class="nav-link ${personaName === 'anonymous' ? 'active' : ''}">Anonymous</a>
-            <a href="/persona/user" class="nav-link ${personaName === 'user' ? 'active' : ''}">User</a>
-            <a href="/persona/admin" class="nav-link ${personaName === 'admin' ? 'active' : ''}">Admin</a>
+            ${Object.keys(allPersonas).map(name => `
+            <a href="/persona/${name}" class="nav-link ${personaName === name ? 'active' : ''}">${name.charAt(0).toUpperCase() + name.slice(1)}</a>
+            `).join('')}
             <a href="/tools" class="nav-link">All Tools</a>
         </div>
 
@@ -1536,14 +1764,17 @@ app.get('/persona/:name', (req, res) => {
 app.get('/', (req, res) => {
   try {
     // Calculate summary statistics
-    const anonymousTools = filterToolsByPersona(allTools, anonymousPersona);
-    const userTools = filterToolsByPersona(allTools, userPersona);
-    const adminTools = filterToolsByPersona(allTools, adminPersona);
-
     const totalSize = allTools.reduce((sum, tool) => sum + (tool.size || 0), 0);
-    const anonymousSize = anonymousTools.reduce((sum, tool) => sum + (tool.size || 0), 0);
-    const userSize = userTools.reduce((sum, tool) => sum + (tool.size || 0), 0);
-    const adminSize = adminTools.reduce((sum, tool) => sum + (tool.size || 0), 0);
+
+    // Calculate persona statistics dynamically
+    const personaStats: Record<string, { tools: ToolWithSize[]; size: number }> = {};
+    for (const [personaName, personaTools] of Object.entries(allPersonas)) {
+      const tools = filterToolsByPersona(allTools, personaTools);
+      personaStats[personaName] = {
+        tools,
+        size: tools.reduce((sum, tool) => sum + (tool.size || 0), 0)
+      };
+    }
 
     // Count tools by service
     const serviceStats = allTools.reduce((acc, tool) => {
@@ -1746,7 +1977,7 @@ app.get('/', (req, res) => {
             </div>
             <div class="summary-card">
                 <h3>Personas</h3>
-                <div class="summary-number">3</div>
+                <div class="summary-number">${Object.keys(allPersonas).length}</div>
             </div>
         </div>
 
@@ -1791,18 +2022,12 @@ app.get('/', (req, res) => {
                     Understand the different user personas and their tool access levels. Personas control which tools are available based on user permissions and authentication status.
                 </p>
                 <div class="card-stats">
+                    ${Object.entries(personaStats).map(([personaName, stats]) => `
                     <div class="stat">
-                        <div class="stat-number">${anonymousTools.length} tools</div>
-                        <div class="stat-label">Anonymous</div>
+                        <div class="stat-number">${stats.tools.length} tools</div>
+                        <div class="stat-label">${personaName.charAt(0).toUpperCase() + personaName.slice(1)}</div>
                     </div>
-                    <div class="stat">
-                        <div class="stat-number">${userTools.length} tools</div>
-                        <div class="stat-label">User</div>
-                    </div>
-                    <div class="stat">
-                        <div class="stat-number">${adminTools.length} tools</div>
-                        <div class="stat-label">Admin</div>
-                    </div>
+                    `).join('')}
                 </div>
                 <br>
                 <a href="/persona" class="btn btn-personas">Explore Personas</a>
@@ -1855,18 +2080,12 @@ async function main(): Promise<void> {
     console.log(`Successfully loaded ${allTools.length} tools`);
 
     // Calculate and display persona sizes
-    const anonymousTools = filterToolsByPersona(allTools, anonymousPersona);
-    const userTools = filterToolsByPersona(allTools, userPersona);
-    const adminTools = filterToolsByPersona(allTools, adminPersona);
-
-    const anonymousSize = anonymousTools.reduce((sum, tool) => sum + (tool.size || 0), 0);
-    const userSize = userTools.reduce((sum, tool) => sum + (tool.size || 0), 0);
-    const adminSize = adminTools.reduce((sum, tool) => sum + (tool.size || 0), 0);
-
     console.log('\n=== Persona Size Summary ===');
-    console.log(`Anonymous: ${anonymousTools.length} tools, ${anonymousSize.toLocaleString()} characters`);
-    console.log(`User: ${userTools.length} tools, ${userSize.toLocaleString()} characters`);
-    console.log(`Admin: ${adminTools.length} tools, ${adminSize.toLocaleString()} characters`);
+    for (const [personaName, personaTools] of Object.entries(allPersonas)) {
+      const tools = filterToolsByPersona(allTools, personaTools);
+      const size = tools.reduce((sum, tool) => sum + (tool.size || 0), 0);
+      console.log(`${personaName.charAt(0).toUpperCase() + personaName.slice(1)}: ${tools.length} tools, ${size.toLocaleString()} characters`);
+    }
     console.log('============================\n');
 
     // Start HTTP server
