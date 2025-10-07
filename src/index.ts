@@ -1775,6 +1775,449 @@ app.get('/persona/:name', (req, res) => {
   }
 });
 
+// Services overview endpoint
+app.get('/services', (req, res) => {
+  try {
+    // Group tools by service
+    const serviceMap: Record<string, ToolWithSize[]> = {};
+
+    for (const tool of allTools) {
+      const service = tool.service || 'unknown';
+      if (!serviceMap[service]) {
+        serviceMap[service] = [];
+      }
+      serviceMap[service].push(tool);
+    }
+
+    // Calculate service statistics
+    const services = Object.entries(serviceMap).map(([serviceName, tools]) => {
+      const totalSize = tools.reduce((sum, tool) => sum + (tool.size || 0), 0);
+      const methods = [...new Set(tools.map(tool => tool.method.toUpperCase()))];
+
+      return {
+        name: serviceName,
+        displayName: serviceName.charAt(0).toUpperCase() + serviceName.slice(1),
+        toolCount: tools.length,
+        totalSize,
+        methods: methods.sort(),
+        tools
+      };
+    }).sort((a, b) => b.toolCount - a.toolCount); // Sort by tool count descending
+
+    const serviceColors: Record<string, string> = {
+      'eda': '#2196f3',
+      'controller': '#9c27b0',
+      'gateway': '#4caf50',
+      'galaxy': '#ff9800',
+      'unknown': '#f44336'
+    };
+
+    const htmlContent = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Services Overview - AAP MCP</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #007acc;
+            padding-bottom: 10px;
+            margin-bottom: 30px;
+        }
+        .navigation {
+            margin-bottom: 30px;
+        }
+        .nav-link {
+            background-color: #6c757d;
+            color: white;
+            padding: 6px 12px;
+            text-decoration: none;
+            border-radius: 4px;
+            margin-right: 10px;
+            font-size: 0.9em;
+        }
+        .nav-link:hover {
+            background-color: #5a6268;
+        }
+        .services-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .service-card {
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            padding: 20px;
+            text-decoration: none;
+            color: inherit;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            background-color: white;
+        }
+        .service-card:hover {
+            border-color: #007acc;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            transform: translateY(-2px);
+            text-decoration: none;
+            color: inherit;
+        }
+        .service-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        .service-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            margin-right: 15px;
+            font-size: 1.2em;
+        }
+        .service-title {
+            font-size: 1.3em;
+            font-weight: bold;
+            margin: 0;
+        }
+        .service-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+            gap: 10px;
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+        }
+        .stat {
+            text-align: center;
+        }
+        .stat-number {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #333;
+        }
+        .stat-label {
+            font-size: 0.8em;
+            color: #6c757d;
+            text-transform: uppercase;
+        }
+        .methods-list {
+            display: flex;
+            gap: 5px;
+            flex-wrap: wrap;
+        }
+        .method-badge {
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.7em;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .method-get { background-color: #28a745; color: white; }
+        .method-post { background-color: #007bff; color: white; }
+        .method-put { background-color: #ffc107; color: black; }
+        .method-patch { background-color: #6f42c1; color: white; }
+        .method-delete { background-color: #dc3545; color: white; }
+        .summary {
+            background-color: #e3f2fd;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+        .summary h2 {
+            margin-top: 0;
+            color: #1976d2;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Services Overview</h1>
+
+        <div class="navigation">
+            <a href="/" class="nav-link">Dashboard</a>
+            <a href="/tools" class="nav-link">All Tools</a>
+            <a href="/persona" class="nav-link">Personas</a>
+        </div>
+
+        <div class="summary">
+            <h2>Available Services</h2>
+            <p>The AAP MCP system integrates with ${services.length} different services, providing access to ${allTools.length} total tools across the Ansible Automation Platform ecosystem.</p>
+        </div>
+
+        <div class="services-grid">
+            ${services.map(service => `
+            <a href="/services/${service.name}" class="service-card">
+                <div class="service-header">
+                    <div class="service-icon" style="background-color: ${serviceColors[service.name] || '#6c757d'};">
+                        ${service.displayName.charAt(0)}
+                    </div>
+                    <h3 class="service-title">${service.displayName}</h3>
+                </div>
+                <div class="service-stats">
+                    <div class="stat">
+                        <div class="stat-number">${service.toolCount}</div>
+                        <div class="stat-label">Tools</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-number">${Math.round(service.totalSize / 1000)}K</div>
+                        <div class="stat-label">Size</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-number">${service.methods.length}</div>
+                        <div class="stat-label">Methods</div>
+                    </div>
+                </div>
+                <div class="methods-list">
+                    ${service.methods.map(method => `
+                    <span class="method-badge method-${method.toLowerCase()}">${method}</span>
+                    `).join('')}
+                </div>
+            </a>
+            `).join('')}
+        </div>
+    </div>
+</body>
+</html>`;
+
+    res.setHeader('Content-Type', 'text/html');
+    res.send(htmlContent);
+  } catch (error) {
+    console.error('Error generating services overview:', error);
+    res.status(500).json({
+      error: 'Failed to generate services overview',
+      message: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
+// Individual service details endpoint
+app.get('/services/:name', (req, res) => {
+  try {
+    const serviceName = req.params.name.toLowerCase();
+
+    // Find tools for this service
+    const serviceTools = allTools.filter(tool => (tool.service || 'unknown') === serviceName);
+
+    if (serviceTools.length === 0) {
+      const availableServices = [...new Set(allTools.map(tool => tool.service || 'unknown'))];
+      return res.status(404).json({
+        error: 'Service not found',
+        message: `Service '${req.params.name}' does not exist. Available services: ${availableServices.join(', ')}`
+      });
+    }
+
+    const displayName = serviceName.charAt(0).toUpperCase() + serviceName.slice(1);
+    const totalSize = serviceTools.reduce((sum, tool) => sum + (tool.size || 0), 0);
+    const methods = [...new Set(serviceTools.map(tool => tool.method.toUpperCase()))].sort();
+
+    // Group tools by HTTP method
+    const toolsByMethod: Record<string, ToolWithSize[]> = {};
+    for (const tool of serviceTools) {
+      const method = tool.method.toUpperCase();
+      if (!toolsByMethod[method]) {
+        toolsByMethod[method] = [];
+      }
+      toolsByMethod[method].push(tool);
+    }
+
+    const serviceColors: Record<string, string> = {
+      'eda': '#2196f3',
+      'controller': '#9c27b0',
+      'gateway': '#4caf50',
+      'galaxy': '#ff9800',
+      'unknown': '#f44336'
+    };
+
+    const htmlContent = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${displayName} Service - AAP MCP</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #007acc;
+            padding-bottom: 10px;
+            margin-bottom: 30px;
+        }
+        .service-badge {
+            display: inline-block;
+            background-color: ${serviceColors[serviceName] || '#6c757d'};
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            margin-left: 10px;
+        }
+        .navigation {
+            margin-bottom: 30px;
+        }
+        .nav-link {
+            background-color: #6c757d;
+            color: white;
+            padding: 6px 12px;
+            text-decoration: none;
+            border-radius: 4px;
+            margin-right: 10px;
+            font-size: 0.9em;
+        }
+        .nav-link:hover {
+            background-color: #5a6268;
+        }
+        .stats {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .methods-section {
+            margin-bottom: 30px;
+        }
+        .method-group {
+            margin-bottom: 20px;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .method-header {
+            padding: 15px;
+            font-weight: bold;
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .method-get { background-color: #28a745; }
+        .method-post { background-color: #007bff; }
+        .method-put { background-color: #ffc107; color: black; }
+        .method-patch { background-color: #6f42c1; }
+        .method-delete { background-color: #dc3545; }
+        .tools-list {
+            padding: 0;
+            margin: 0;
+            list-style: none;
+        }
+        .tool-item {
+            padding: 10px 15px;
+            border-bottom: 1px solid #e9ecef;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .tool-item:last-child {
+            border-bottom: none;
+        }
+        .tool-item:hover {
+            background-color: #f8f9fa;
+        }
+        .tool-name {
+            font-weight: bold;
+            color: #007acc;
+            text-decoration: none;
+        }
+        .tool-name:hover {
+            text-decoration: underline;
+        }
+        .tool-size {
+            font-size: 0.9em;
+            color: #6c757d;
+        }
+        .method-count {
+            background-color: rgba(255,255,255,0.3);
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.8em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>${displayName} Service<span class="service-badge">${serviceTools.length} tools</span></h1>
+
+        <div class="navigation">
+            <a href="/" class="nav-link">Dashboard</a>
+            <a href="/services" class="nav-link">All Services</a>
+            <a href="/tools" class="nav-link">All Tools</a>
+            <a href="/persona" class="nav-link">Personas</a>
+        </div>
+
+        <div class="stats">
+            <strong>Service:</strong> ${displayName}<br>
+            <strong>Total Tools:</strong> ${serviceTools.length}<br>
+            <strong>Total Size:</strong> ${totalSize.toLocaleString()} characters<br>
+            <strong>HTTP Methods:</strong> ${methods.join(', ')}
+        </div>
+
+        <div class="methods-section">
+            <h2>Tools by HTTP Method</h2>
+            ${Object.entries(toolsByMethod).sort().map(([method, tools]) => `
+            <div class="method-group">
+                <div class="method-header method-${method.toLowerCase()}">
+                    <span>${method}</span>
+                    <span class="method-count">${tools.length} tools</span>
+                </div>
+                <ul class="tools-list">
+                    ${tools.map(tool => `
+                    <li class="tool-item">
+                        <a href="/tools/${encodeURIComponent(tool.name)}" class="tool-name">${tool.name}</a>
+                        <span class="tool-size">${tool.size.toLocaleString()} chars</span>
+                    </li>
+                    `).join('')}
+                </ul>
+            </div>
+            `).join('')}
+        </div>
+    </div>
+</body>
+</html>`;
+
+    res.setHeader('Content-Type', 'text/html');
+    res.send(htmlContent);
+  } catch (error) {
+    console.error('Error generating service details:', error);
+    res.status(500).json({
+      error: 'Failed to generate service details',
+      message: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
 // Root endpoint - dashboard
 app.get('/', (req, res) => {
   try {
@@ -2026,6 +2469,37 @@ app.get('/', (req, res) => {
                 </div>
                 <br><br>
                 <a href="/tools" class="btn">Browse All Tools</a>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon" style="background: linear-gradient(45deg, #ff6b6b, #ee5a24);">🏗️</div>
+                    <h2 class="card-title">Services</h2>
+                </div>
+                <p class="card-description">
+                    Explore the different AAP services that provide the tools. Each service represents a different component of the Ansible Automation Platform ecosystem.
+                </p>
+                <div class="card-stats">
+                    <div class="stat">
+                        <div class="stat-number">${Object.keys(serviceStats).length}</div>
+                        <div class="stat-label">Services</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-number">${allTools.length}</div>
+                        <div class="stat-label">Total Tools</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-number">${Math.round(totalSize / 1000)}K</div>
+                        <div class="stat-label">Characters</div>
+                    </div>
+                </div>
+                <div class="service-stats">
+                    ${Object.entries(serviceStats).map(([service, count]) =>
+                        `<span class="service-badge service-${service}">${service}: ${count}</span>`
+                    ).join('')}
+                </div>
+                <br><br>
+                <a href="/services" class="btn" style="background: linear-gradient(45deg, #ff6b6b, #ee5a24);">Explore Services</a>
             </div>
 
             <div class="card">
