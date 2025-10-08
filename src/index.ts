@@ -52,18 +52,18 @@ const loadPersonasFromConfig = (): PersonaConfig => {
 };
 
 // Load personas from configuration
-const personaConfig = loadPersonasFromConfig();
-const allPersonas: Record<string, Persona> = personaConfig.personas;
+const localConfig = loadPersonasFromConfig();
+const allPersonas: Record<string, Persona> = localConfig.personas;
 
 // Log configuration settings
 console.log(`BASE_URL: ${CONFIG.BASE_URL}`);
 
 // Get API query recording setting (defaults to false)
-const recordApiQueries = personaConfig.record_api_queries ?? false;
+const recordApiQueries = localConfig.record_api_queries ?? false;
 console.log(`API query recording: ${recordApiQueries ? 'ENABLED' : 'DISABLED'}`);
 
 // Get certificate validation setting (defaults to false)
-const ignoreCertificateErrors = personaConfig['ignore-certificate-errors'] ?? false;
+const ignoreCertificateErrors = localConfig['ignore-certificate-errors'] ?? false;
 console.log(`Certificate validation: ${ignoreCertificateErrors ? 'DISABLED' : 'ENABLED'}`);
 
 // Configure HTTPS certificate validation globally
