@@ -15,6 +15,8 @@ RUN npm ci
 # Copy source code
 COPY src/ ./src/
 
+RUN npm install
+
 # Build the TypeScript project
 RUN npm run build
 
@@ -31,8 +33,18 @@ COPY package*.json ./
 # Install only production dependencies
 RUN npm ci --only=production && npm cache clean --force
 
+# Pull the openapi-mcp-generator fork
+RUN microdnf install -y git-core
+RUN rm -r /app/node_modules/openapi-mcp-generator
+RUN git clone https://github.com/goneri/openapi-mcp-generator /app/node_modules/openapi-mcp-generator
+RUN cd /app/node_modules/openapi-mcp-generator && npm install && npm run build
+
+
 # Copy built application from builder stage
 COPY --from=builder /app/dist ./dist
+
+# Copy the OpenAPIv3 schema files
+COPY data/ ./data/
 
 # Copy the configuration
 COPY aap-mcp.yaml ./
