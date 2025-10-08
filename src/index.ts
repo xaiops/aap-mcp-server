@@ -246,8 +246,7 @@ const loadOpenApiSpecs = async (): Promise<OpenApiSpecEntry[]> => {
       service: 'galaxy',
     },
     {
-      //url: "https://s3.amazonaws.com/awx-public-ci-files/release_4.6/schema.json",
-      url: "https://nowhere",
+      url: "https://s3.amazonaws.com/awx-public-ci-files/release_4.6/schema.json",
       // The upstream file is in Swagger2 format. We use our local copy which
       // was manually converted
       localPath: join(process.cwd(), 'data/controller-schema.json'),
@@ -262,34 +261,34 @@ const loadOpenApiSpecs = async (): Promise<OpenApiSpecEntry[]> => {
   ];
 
   for (const specEntry of specUrls) {
-    try {
-      console.log(`Fetching OpenAPI spec from: ${specEntry.url}`);
-      const response = await fetch(specEntry.url, {
-        headers: {
-          'Accept': 'application/json'
-        }
-      });
+    // try {
+    //   console.log(`Fetching OpenAPI spec from: ${specEntry.url}`);
+    //   const response = await fetch(specEntry.url, {
+    //     headers: {
+    //       'Accept': 'application/json'
+    //     }
+    //   });
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
+    //   if (!response.ok) {
+    //     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    //   }
 
-      specEntry.spec = await response.json();
-      console.log(`Successfully loaded OpenAPI spec from: ${specEntry.url}`);
-    } catch (error) {
-      console.error(`Error fetching OpenAPI spec from ${specEntry.url}:`, error);
+    //   specEntry.spec = await response.json();
+    //   console.log(`Successfully loaded OpenAPI spec from: ${specEntry.url}`);
+    // } catch (error) {
+    //   console.error(`Error fetching OpenAPI spec from ${specEntry.url}:`, error);
 
-      // Try to load from local file as fallback
-      try {
+    //   // Try to load from local file as fallback
+    //   try {
         console.log(`Attempting to load from local file: ${specEntry.localPath}`);
         const localContent = readFileSync(specEntry.localPath!, 'utf8');
         specEntry.spec = JSON.parse(localContent);
         console.log(`Successfully loaded OpenAPI spec from local file: ${specEntry.localPath}`);
-      } catch (localError) {
-        console.error(`Error loading local OpenAPI spec from ${specEntry.localPath}:`, localError);
-        // Continue with other URLs even if both remote and local fail
-      }
-    }
+      // } catch (localError) {
+      //   console.error(`Error loading local OpenAPI spec from ${specEntry.localPath}:`, localError);
+      //   // Continue with other URLs even if both remote and local fail
+      // }
+    // }
   }
 
   console.log(`Number of OpenAPIv3 files loaded=${specUrls.length}`)
