@@ -247,8 +247,9 @@ const loadOpenApiSpecs = async (): Promise<OpenApiSpecEntry[]> => {
     },
     {
       //url: "https://s3.amazonaws.com/awx-public-ci-files/release_4.6/schema.json",
-      url: null, // The upstream file is in Swagger2 format. We use our local copy which
-                 // was manually converted
+      url: "https://nowhere",
+      // The upstream file is in Swagger2 format. We use our local copy which
+      // was manually converted
       localPath: join(process.cwd(), 'data/controller-schema.json'),
       reformatFunc: (tool: AAPMcpToolDefinition) => {
         tool.pathTemplate = tool.pathTemplate?.replace("/api/v2", "/api/controller/v2");
