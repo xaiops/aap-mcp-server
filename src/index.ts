@@ -732,15 +732,32 @@ const mcpDeleteHandler = async (req: express.Request, res: express.Response, per
 };
 
 // Tool list HTML endpoint
-app.get('/tools', (req, res) => {
+app.get('/tools', async (req, res) => {
   try {
-    const toolRows = allTools.map(tool => `
-      <tr>
+    // Calculate success rates for all tools
+    const toolsWithSuccessRates = await Promise.all(allTools.map(async (tool) => {
+      const logEntries = await getToolLogEntries(tool.name);
+      let successRate = 'N/A';
+
+      if (logEntries.length > 0) {
+        const successCount = logEntries.filter(entry => entry.return_code >= 200 && entry.return_code < 300).length;
+        const successPercentage = (successCount / logEntries.length) * 100;
+        successRate = `${successPercentage.toFixed(1)}%`;
+      }
+
+      return {
+        ...tool,
+        successRate,
+        logCount: logEntries.length
+      };
+    }));
+
+    const toolRows = toolsWithSuccessRates.map(tool => `
+      <tr data-name="${tool.name}" data-size="${tool.size}" data-service="${tool.service || 'unknown'}" data-success-rate="${tool.successRate === 'N/A' ? -1 : parseFloat(tool.successRate)}">
         <td><a href="/tools/${encodeURIComponent(tool.name)}" style="color: #007acc; text-decoration: none;">${tool.name}</a></td>
         <td>${tool.size}</td>
-        <td>${tool.description || ''}</td>
-        <td><code>${tool.pathTemplate}</code></td>
         <td><span class="service-${tool.service || 'unknown'}">${tool.service || 'unknown'}</span></td>
+        <td><span class="success-rate ${tool.successRate === 'N/A' ? 'no-data' : (parseFloat(tool.successRate) >= 90 ? 'excellent' : parseFloat(tool.successRate) >= 70 ? 'good' : 'poor')}">${tool.successRate}</span></td>
       </tr>
     `).join('');
 
@@ -823,6 +840,57 @@ app.get('/tools', (req, res) => {
         .btn:hover {
             background-color: #005a9e;
         }
+        .success-rate {
+            font-weight: bold;
+            padding: 4px 8px;
+            border-radius: 4px;
+            display: inline-block;
+        }
+        .success-rate.excellent {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .success-rate.good {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        .success-rate.poor {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .success-rate.no-data {
+            background-color: #e2e3e5;
+            color: #6c757d;
+            border: 1px solid #ced4da;
+        }
+        .sortable {
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+        }
+        .sortable:hover {
+            background-color: #f8f9fa;
+        }
+        .sort-indicator {
+            margin-left: 5px;
+            color: #6c757d;
+            font-size: 0.8em;
+        }
+        .sortable.asc .sort-indicator {
+            color: #007acc;
+        }
+        .sortable.asc .sort-indicator::after {
+            content: ' ↑';
+        }
+        .sortable.desc .sort-indicator {
+            color: #007acc;
+        }
+        .sortable.desc .sort-indicator::after {
+            content: ' ↓';
+        }
     </style>
 </head>
 <body>
@@ -841,11 +909,18 @@ app.get('/tools', (req, res) => {
         <table>
             <thead>
                 <tr>
-                    <th>Tool Name</th>
-                    <th>Size (chars)</th>
-                    <th>Description</th>
-                    <th>Path Template</th>
-                    <th>Service</th>
+                    <th class="sortable" data-column="name">
+                        Tool Name <span class="sort-indicator">⇅</span>
+                    </th>
+                    <th class="sortable" data-column="size">
+                        Size (chars) <span class="sort-indicator">⇅</span>
+                    </th>
+                    <th class="sortable" data-column="service">
+                        Service <span class="sort-indicator">⇅</span>
+                    </th>
+                    <th class="sortable" data-column="successRate">
+                        Success Rate <span class="sort-indicator">⇅</span>
+                    </th>
                 </tr>
             </thead>
             <tbody>
@@ -853,6 +928,116 @@ app.get('/tools', (req, res) => {
             </tbody>
         </table>
     </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const table = document.querySelector('table tbody');
+            const headers = document.querySelectorAll('th.sortable');
+            let currentSort = { column: null, direction: 'asc' };
+
+            // Read URL parameters on page load
+            function readUrlParams() {
+                const urlParams = new URLSearchParams(window.location.search);
+                const sortBy = urlParams.get('sort_by');
+                const sortOrder = urlParams.get('sort_order');
+
+                if (sortBy && ['name', 'size', 'service', 'successRate'].includes(sortBy)) {
+                    currentSort.column = sortBy;
+                    currentSort.direction = sortOrder === 'desc' ? 'desc' : 'asc';
+
+                    // Apply the sorting
+                    sortTable(currentSort.column, currentSort.direction);
+
+                    // Update header indicators
+                    headers.forEach(h => {
+                        h.classList.remove('asc', 'desc');
+                        if (h.dataset.column === currentSort.column) {
+                            h.classList.add(currentSort.direction);
+                        }
+                    });
+                }
+            }
+
+            // Update URL with current sort parameters
+            function updateUrl(column, direction) {
+                const url = new URL(window.location);
+                url.searchParams.set('sort_by', column);
+                url.searchParams.set('sort_order', direction);
+                window.history.replaceState({}, '', url);
+            }
+
+            headers.forEach(header => {
+                header.addEventListener('click', function() {
+                    const column = this.dataset.column;
+
+                    // Toggle direction if clicking the same column
+                    if (currentSort.column === column) {
+                        currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+                    } else {
+                        currentSort.direction = 'asc';
+                    }
+                    currentSort.column = column;
+
+                    // Update header indicators
+                    headers.forEach(h => {
+                        h.classList.remove('asc', 'desc');
+                    });
+                    this.classList.add(currentSort.direction);
+
+                    // Sort the table
+                    sortTable(column, currentSort.direction);
+
+                    // Update URL
+                    updateUrl(column, currentSort.direction);
+                });
+            });
+
+            function sortTable(column, direction) {
+                const rows = Array.from(table.querySelectorAll('tr'));
+
+                rows.sort((a, b) => {
+                    let aVal, bVal;
+
+                    switch(column) {
+                        case 'name':
+                            aVal = a.dataset.name.toLowerCase();
+                            bVal = b.dataset.name.toLowerCase();
+                            break;
+                        case 'size':
+                            aVal = parseInt(a.dataset.size) || 0;
+                            bVal = parseInt(b.dataset.size) || 0;
+                            break;
+                        case 'service':
+                            aVal = a.dataset.service.toLowerCase();
+                            bVal = b.dataset.service.toLowerCase();
+                            break;
+                        case 'successRate':
+                            aVal = parseFloat(a.dataset.successRate) || -1;
+                            bVal = parseFloat(b.dataset.successRate) || -1;
+                            break;
+                        default:
+                            return 0;
+                    }
+
+                    if (column === 'size' || column === 'successRate') {
+                        // Numeric sorting
+                        return direction === 'asc' ? aVal - bVal : bVal - aVal;
+                    } else {
+                        // String sorting
+                        if (aVal < bVal) return direction === 'asc' ? -1 : 1;
+                        if (aVal > bVal) return direction === 'asc' ? 1 : -1;
+                        return 0;
+                    }
+                });
+
+                // Reorder the table rows
+                rows.forEach(row => table.appendChild(row));
+            }
+
+            // Initialize sorting from URL parameters
+            readUrlParams();
+        });
+    </script>
 </body>
 </html>`;
 
@@ -891,6 +1076,17 @@ app.get('/tools/:name', async (req, res) => {
       acc[code] = (acc[code] || 0) + 1;
       return acc;
     }, {} as Record<number, number>);
+
+    // Calculate success vs error statistics for pie chart
+    const chartData = logEntries.reduce((acc, entry) => {
+      const code = entry.return_code;
+      if (code >= 200 && code < 300) {
+        acc.success += 1;
+      } else {
+        acc.error += 1;
+      }
+      return acc;
+    }, { success: 0, error: 0 });
 
     // Check which personas have access to this tool
     const personasWithAccess = [];
@@ -970,6 +1166,7 @@ app.get('/tools/:name', async (req, res) => {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${tool.name} - Tool Details</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -1128,6 +1325,33 @@ app.get('/tools/:name', async (req, res) => {
             gap: 20px;
             margin-top: 15px;
         }
+        .chart-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 30px;
+            margin-bottom: 20px;
+        }
+        .chart-wrapper {
+            flex: 0 0 300px;
+            height: 300px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .chart-title {
+            font-size: 1.1em;
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: #333;
+        }
+        .chart-canvas {
+            width: 250px !important;
+            height: 250px !important;
+        }
+        .stats-details {
+            flex: 1;
+        }
         .stat-card {
             background-color: #f8f9fa;
             padding: 20px;
@@ -1227,17 +1451,25 @@ app.get('/tools/:name', async (req, res) => {
             <h2>Usage Statistics</h2>
             ${logEntries.length > 0 ? `
             <p><strong>Total Calls:</strong> ${logEntries.length}</p>
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <h4>Response Codes</h4>
-                    <div class="code-summary">
-                        ${Object.entries(errorCodeSummary).map(([code, count]) => `
-                        <div class="code-entry" style="border-left: 4px solid ${getStatusColor(Number(code))};">
-                            <span class="code-number">${code}</span>
-                            <span class="code-text">${getStatusText(Number(code))}</span>
-                            <span class="code-count">${count} calls</span>
+            <div class="chart-container">
+                <div class="chart-wrapper">
+                    <div class="chart-title">Success vs Error Rate</div>
+                    <canvas id="statusChart" class="chart-canvas"></canvas>
+                </div>
+                <div class="stats-details">
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <h4>Response Codes</h4>
+                            <div class="code-summary">
+                                ${Object.entries(errorCodeSummary).map(([code, count]) => `
+                                <div class="code-entry" style="border-left: 4px solid ${getStatusColor(Number(code))};">
+                                    <span class="code-number">${code}</span>
+                                    <span class="code-text">${getStatusText(Number(code))}</span>
+                                    <span class="code-count">${count} calls</span>
+                                </div>
+                                `).join('')}
+                            </div>
                         </div>
-                        `).join('')}
                     </div>
                 </div>
             </div>
@@ -1324,6 +1556,60 @@ app.get('/tools/:name', async (req, res) => {
         </div>
         ` : ''}
     </div>
+
+    ${logEntries.length > 0 ? `
+    <script>
+        // Create pie chart for success vs error distribution
+        const ctx = document.getElementById('statusChart').getContext('2d');
+        const chartData = {
+            labels: ['Success (2xx)', 'Errors (non-2xx)'],
+            datasets: [{
+                data: [${chartData.success}, ${chartData.error}],
+                backgroundColor: [
+                    '#28a745', // Green for success
+                    '#dc3545'  // Red for errors
+                ],
+                borderColor: [
+                    '#1e7e34',
+                    '#c82333'
+                ],
+                borderWidth: 2
+            }]
+        };
+
+        const config = {
+            type: 'pie',
+            data: chartData,
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            padding: 20,
+                            usePointStyle: true,
+                            font: {
+                                size: 12
+                            }
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                const percentage = ((context.parsed / total) * 100).toFixed(1);
+                                return context.label + ': ' + context.parsed + ' (' + percentage + '%)';
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        new Chart(ctx, config);
+    </script>
+    ` : ''}
 </body>
 </html>`;
 
@@ -1824,7 +2110,17 @@ app.get('/logs', async (req, res) => {
     }
 
     // Get all log entries
-    const allEntries = await getAllLogEntries();
+    let allEntries = await getAllLogEntries();
+
+    // Apply status code filter if provided
+    const statusCodeFilter = req.query.status_code as string;
+    if (statusCodeFilter) {
+      const filterCode = parseInt(statusCodeFilter, 10);
+      if (!isNaN(filterCode)) {
+        allEntries = allEntries.filter(entry => entry.return_code === filterCode);
+      }
+    }
+
     const last300 = allEntries.slice(0, 300);
 
     // Helper function to format timestamp for display
@@ -1851,7 +2147,8 @@ app.get('/logs', async (req, res) => {
     };
 
     // Calculate summary statistics
-    const totalRequests = allEntries.length;
+    const originalTotalRequests = (await getAllLogEntries()).length; // Original total before filtering
+    const totalRequests = allEntries.length; // Total after filtering
     const statusCodeSummary = last300.reduce((acc, entry) => {
       const code = entry.return_code;
       acc[code] = (acc[code] || 0) + 1;
@@ -2019,6 +2316,10 @@ app.get('/logs', async (req, res) => {
             font-size: 0.8em;
             border-left: 3px solid #6c757d;
         }
+        .code-entry:hover {
+            background-color: #e9ecef;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
@@ -2034,16 +2335,23 @@ app.get('/logs', async (req, res) => {
 
         <div class="summary">
             <h2>Log Summary</h2>
-            <p>Showing the last 300 requests out of ${totalRequests.toLocaleString()} total logged requests.</p>
+            <p>Showing the last 300 requests${statusCodeFilter ? ` out of ${totalRequests.toLocaleString()} filtered results` : ''} from ${originalTotalRequests.toLocaleString()} total logged requests.${statusCodeFilter ? ` <strong>Filtered by status code: ${statusCodeFilter}</strong>` : ''}</p>
+
+            ${statusCodeFilter ? `
+            <div style="margin: 20px 0; padding: 15px; background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 5px;">
+                <strong>Filtering by status code: ${statusCodeFilter}</strong>
+                <a href="/logs" style="margin-left: 15px; padding: 5px 15px; background-color: #6c757d; color: white; text-decoration: none; border-radius: 4px;">Clear Filter</a>
+            </div>
+            ` : ''}
 
             <div class="summary-grid">
                 <div class="summary-card">
                     <h4>Status Codes</h4>
                     <div class="code-summary">
                         ${Object.entries(statusCodeSummary).map(([code, count]) => `
-                        <div class="code-entry" style="border-left-color: ${getStatusColor(Number(code))};">
+                        <a href="/logs?status_code=${code}" class="code-entry" style="border-left-color: ${getStatusColor(Number(code))}; text-decoration: none; color: inherit; display: block; transition: background-color 0.2s ease;">
                             ${code}: ${count}
-                        </div>
+                        </a>
                         `).join('')}
                     </div>
                 </div>
