@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import OASNormalize from 'oas-normalize';
 import { config } from "dotenv";
 import express from "express";
 import cors from "cors";
@@ -302,10 +303,21 @@ const generateTools = async (): Promise<ToolWithSize[]> => {
 
   for (const spec of openApiSpecs) {
     console.log(`Loading ${spec.service}`);
+    let oas = new OASNormalize(
+      spec.spec
+    );
+    const derefedDocument = await oas.deref();
+    oas = new OASNormalize(
+      derefedDocument
+    );
+
+    let mspecification = await oas.convert();
+    // Convert to bundled version for consistency
+    const bundledSpec = await (new OASNormalize(mspecification)).bundle();
+
     try {
-      const tools = await getToolsFromOpenApi(spec.spec, {
+      const tools = await getToolsFromOpenApi(bundledSpec as any, {
         baseUrl: CONFIG.BASE_URL,
-        dereference: true,
       }) as AAPMcpToolDefinition[];
       const filteredTools = tools.filter((tool) => {
         tool.service = spec.service; // Add service information to each tool
