@@ -2133,7 +2133,7 @@ app.get('/logs', async (req, res) => {
       }
     }
 
-    const last300 = allEntries.slice(0, 300);
+    const last1000 = allEntries.slice(0, 1000);
 
     // Helper function to format timestamp for display
     const formatTimestamp = (timestamp: string) => {
@@ -2161,13 +2161,13 @@ app.get('/logs', async (req, res) => {
     // Calculate summary statistics
     const originalTotalRequests = (await getAllLogEntries()).length; // Original total before filtering
     const totalRequests = allEntries.length; // Total after filtering
-    const statusCodeSummary = last300.reduce((acc, entry) => {
+    const statusCodeSummary = last1000.reduce((acc, entry) => {
       const code = entry.return_code;
       acc[code] = (acc[code] || 0) + 1;
       return acc;
     }, {} as Record<number, number>);
 
-    const toolSummary = last300.reduce((acc, entry) => {
+    const toolSummary = last1000.reduce((acc, entry) => {
       acc[entry.toolName] = (acc[entry.toolName] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);
@@ -2336,7 +2336,7 @@ app.get('/logs', async (req, res) => {
 </head>
 <body>
     <div class="container">
-        <h1>Request Logs<span style="color: #6c757d; font-size: 0.7em; margin-left: 15px;">Last 300 requests</span></h1>
+        <h1>Request Logs<span style="color: #6c757d; font-size: 0.7em; margin-left: 15px;">Last 1000 requests</span></h1>
 
         <div class="navigation">
             <a href="/" class="nav-link">Dashboard</a>
@@ -2347,7 +2347,7 @@ app.get('/logs', async (req, res) => {
 
         <div class="summary">
             <h2>Log Summary</h2>
-            <p>Showing the last 300 requests${statusCodeFilter ? ` out of ${totalRequests.toLocaleString()} filtered results` : ''} from ${originalTotalRequests.toLocaleString()} total logged requests.${statusCodeFilter ? ` <strong>Filtered by status code: ${statusCodeFilter}</strong>` : ''}</p>
+            <p>Showing the last 1000 requests${statusCodeFilter ? ` out of ${totalRequests.toLocaleString()} filtered results` : ''} from ${originalTotalRequests.toLocaleString()} total logged requests.${statusCodeFilter ? ` <strong>Filtered by status code: ${statusCodeFilter}</strong>` : ''}</p>
 
             ${statusCodeFilter ? `
             <div style="margin: 20px 0; padding: 15px; background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 5px;">
@@ -2396,7 +2396,7 @@ app.get('/logs', async (req, res) => {
                 </tr>
             </thead>
             <tbody>
-                ${last300.map(entry => `
+                ${last1000.map(entry => `
                 <tr>
                     <td class="timestamp">${formatTimestamp(entry.timestamp)}</td>
                     <td>
