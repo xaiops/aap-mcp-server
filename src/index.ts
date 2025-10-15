@@ -24,20 +24,13 @@ import { renderDashboard, renderToolsList, type ToolWithSuccessRate } from "./vi
 // Load environment variables
 config();
 
-// Configuration constants
-const CONFIG = {
-  BASE_URL: process.env.BASE_URL || "http://localhost:44926",
-  MCP_PORT: process.env.MCP_PORT ? parseInt(process.env.MCP_PORT, 10) : 3000,
-  FALLBACK_BEARER_TOKEN: process.env.BEARER_TOKEN_OAUTH2_AUTHENTICATION,
-} as const;
-
-
 type Category = string[];
 
 interface CategoryConfig {
   record_api_queries?: boolean;
   'ignore-certificate-errors'?: boolean;
   enable_ui?: boolean;
+  base_url?: string;
   categories: Record<string, string[]>;
 }
 
@@ -57,6 +50,13 @@ const loadCategoriesFromConfig = (): CategoryConfig => {
 // Load categories from configuration
 const localConfig = loadCategoriesFromConfig();
 const allCategories: Record<string, Category> = localConfig.categories;
+
+// Configuration constants (with priority: env var > config file > default)
+const CONFIG = {
+  BASE_URL: process.env.BASE_URL || localConfig.base_url || "https://localhost",
+  MCP_PORT: process.env.MCP_PORT ? parseInt(process.env.MCP_PORT, 10) : 3000,
+  FALLBACK_BEARER_TOKEN: process.env.BEARER_TOKEN_OAUTH2_AUTHENTICATION,
+} as const;
 
 // Log configuration settings
 console.log(`BASE_URL: ${CONFIG.BASE_URL}`);

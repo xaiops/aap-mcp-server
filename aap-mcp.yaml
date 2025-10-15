@@ -8,6 +8,10 @@ ignore-certificate-errors: true
 # Configuration for Web UI (defaults to false if not specified)
 # enable_ui: false
 
+# Configuration for base URL (defaults to https://localhost if not specified)
+# Lower priority than BASE_URL environment variable
+base_url: "https://example.com:8443"
+
 categories:
   job_management:
     - controller.job_templates_launch_create
