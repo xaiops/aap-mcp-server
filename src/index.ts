@@ -2938,6 +2938,11 @@ app.delete('/:category/mcp', (req, res) => {
   return mcpDeleteHandler(req, res, category);
 });
 
+// Health check endpoint (always enabled)
+app.get('/api/v1/health', (req, res) => {
+  res.json({ status: 'ok' });
+});
+
 async function main(): Promise<void> {
   try {
     // Initialize tools before starting server
