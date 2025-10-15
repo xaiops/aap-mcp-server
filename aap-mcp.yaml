@@ -5,6 +5,9 @@ record_api_queries: true
 # Configuration for HTTPS certificate validation
 ignore-certificate-errors: true
 
+# Configuration for Web UI (defaults to false if not specified)
+# enable_ui: false
+
 categories:
   job_management:
     - controller.job_templates_launch_create

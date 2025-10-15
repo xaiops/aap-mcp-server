@@ -37,6 +37,7 @@ type Category = string[];
 interface CategoryConfig {
   record_api_queries?: boolean;
   'ignore-certificate-errors'?: boolean;
+  enable_ui?: boolean;
   categories: Record<string, string[]>;
 }
 
@@ -67,6 +68,10 @@ console.log(`API query recording: ${recordApiQueries ? 'ENABLED' : 'DISABLED'}`)
 // Get certificate validation setting (defaults to false)
 const ignoreCertificateErrors = localConfig['ignore-certificate-errors'] ?? false;
 console.log(`Certificate validation: ${ignoreCertificateErrors ? 'DISABLED' : 'ENABLED'}`);
+
+// Get UI enable setting (defaults to false)
+const enableUI = localConfig.enable_ui ?? false;
+console.log(`Web UI: ${enableUI ? 'ENABLED' : 'DISABLED'}`);
 
 // Configure HTTPS certificate validation globally
 if (ignoreCertificateErrors) {
@@ -744,8 +749,10 @@ const mcpDeleteHandler = async (req: express.Request, res: express.Response, cat
   }
 };
 
-// Tool list HTML endpoint
-app.get('/tools', async (req, res) => {
+// Web UI routes (only enabled if enable_ui is true)
+if (enableUI) {
+  // Tool list HTML endpoint
+  app.get('/tools', async (req, res) => {
   try {
     // Calculate success rates for all tools
     const toolsWithSuccessRates = await Promise.all(allTools.map(async (tool) => {
@@ -2904,6 +2911,8 @@ app.get('/', (req, res) => {
     });
   }
 });
+
+} // End of enableUI conditional block
 
 // Set up routes
 app.post('/mcp', (req, res) => mcpPostHandler(req, res));
