@@ -13,7 +13,7 @@ A Model Context Protocol (MCP) service that provides access to Ansible Automatio
 1. Clone the repository:
 ```bash
 git clone <repository-url>
-cd poc-aap-mcp
+cd aap-mcp-server
 ```
 
 2. Install dependencies:
