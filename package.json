@@ -16,7 +16,7 @@
   },
   "keywords": [],
   "author": "",
-  "license": "GPL-3.0-or-late",
+  "license": "GPL-3.0-or-later",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.18.1",
     "@types/js-yaml": "^4.0.9",
