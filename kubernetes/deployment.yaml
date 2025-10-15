@@ -17,7 +17,7 @@ data:
       - name: controller
         local_path: data/controller-schema.json
       - name: galaxy
-        local_path: data/galaxy-schema.json
+        local_path: data/galaxy-openapi.json
       - name: gateway
       - name: eda
 
