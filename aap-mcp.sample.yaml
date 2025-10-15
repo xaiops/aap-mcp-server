@@ -1,0 +1,43 @@
+---
+# Configuration for API query recording
+record_api_queries: false
+
+# Configuration for HTTPS certificate validation
+ignore-certificate-errors: false
+
+# Configuration for Web UI (defaults to false if not specified)
+# enable_ui: false
+
+# Configuration for base URL (defaults to https://localhost if not specified)
+# Lower priority than BASE_URL environment variable
+base_url: "https://example.com:8443"
+
+categories:
+  job_management:
+    - controller.job_templates_launch_create
+    - controller.workflow_job_templates_launch_create
+    - controller.jobs_read
+    - controller.workflow_jobs_read
+    - controller.jobs_stdout_read
+    - controller.jobs_job_events_list
+    - controller.jobs_cancel_create
+    - controller.workflow_jobs_cancel_create
+    - controller.jobs_relaunch_create     
+    - controller.jobs_list
+    - eda.activation_instances_list
+    - eda.activation_instances_logs_list
+    - controller.analytics_list
+    - controller.metrics_list
+    - controller.projects_list
+    - controller.job_templates_list
+
+  inventory_management:
+    - controller.inventories_list
+    - controller.inventory_sources_update_create
+    - controller.hosts_list
+    - controller.hosts_read
+    - controller.hosts_variable_data_read
+    - controller.groups_list
+    - controller.groups_create
+    # controller: /api/v2/hosts/{id}/insights/
+    # controller: /api/v2/settings/database/

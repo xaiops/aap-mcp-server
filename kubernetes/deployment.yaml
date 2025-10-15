@@ -1,3 +1,4 @@
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -5,11 +6,405 @@ metadata:
   labels:
     app: aap-mcp
 data:
-  BASE_URL: "https://15.223.251.237"
+  aap-mcp.yaml: |
+    ---
+    record_api_queries: true
+    ignore-certificate-errors: true
+    enable_ui: true
+    base_url: https://99.79.76.250
+
+    categories:
+      job_management:
+        - controller.job_templates_launch_create
+        - controller.workflow_job_templates_launch_create
+        - controller.jobs_read
+        - controller.workflow_jobs_read
+        - controller.jobs_stdout_read
+        - controller.jobs_job_events_list
+        - controller.jobs_cancel_create
+        - controller.workflow_jobs_cancel_create
+        - controller.jobs_relaunch_create
+        - controller.jobs_list
+        - eda.activation_instances_list
+        - eda.activation_instances_logs_list
+        - controller.analytics_list
+        - controller.metrics_list
+        - controller.projects_list
+        - controller.job_templates_list
+
+      inventory_management:
+        - controller.inventories_list
+        - controller.inventory_sources_update_create
+        - controller.hosts_list
+        - controller.hosts_read
+        - controller.hosts_variable_data_read
+        - controller.groups_list
+        - controller.groups_create
+        # controller: /api/v2/hosts/{id}/insights/
+        # controller: /api/v2/settings/database/
+
+      system_monitoring:
+        - controller.ping_list
+        - controller.config_list
+        - controller.instance_groups_list
+        - controller.instance_groups_create
+        - controller.mesh_visualizer_list
+        - controller.instances_create
+        - gateway.activitystream_list
+        - gateway.authenticators_list
+        - gateway.http_ports_list
+        - gateway.http_ports_create
+        # controller: /api/v2/instance_groups/{id}/capacity/
+        - controller.activity_stream_list
+        - controller.instances_read
+        - gateway.feature_flags_state_retrieve
+
+      staging:
+        - controller.activity_stream_list
+        - controller.analytics_job_explorer_create
+        - controller.analytics_job_explorer_list
+        - controller.analytics_list
+        - controller.bulk_job_launch_create
+        - controller.bulk_job_launch_list
+        - controller.config_list
+        - controller.constructed_inventories_create
+        - controller.constructed_inventories_partial_update
+        - controller.constructed_inventories_update
+        - controller.credential_types_list
+        - controller.credentials_list
+        - controller.credentials_owner_teams_list
+        - controller.credentials_owner_users_list
+        - controller.credentials_read
+        - controller.credentials_read
+        - controller.dashboard_graphs_jobs_list
+        - controller.groups_ad_hoc_commands_list
+        - controller.groups_all_hosts_list
+        - controller.groups_create
+        - controller.groups_list
+        - controller.hosts_activity_stream_list
+        - controller.hosts_ad_hoc_commands_list
+        - controller.hosts_list
+        - controller.hosts_read
+        - controller.hosts_smart_inventories_list
+        - controller.hosts_variable_data_read
+        - controller.instance_groups_create
+        - controller.instance_groups_instances_create
+        - controller.instance_groups_jobs_list
+        - controller.instance_groups_list
+        - controller.instance_groups_read
+        - controller.instances_create
+        - controller.instances_jobs_list
+        - controller.instances_list
+        - controller.instances_partial_update
+        - controller.instances_peers_list
+        - controller.instances_read
+        - controller.instances_update
+        - controller.inventories_inventory_sources_create
+        - controller.inventories_list
+        - controller.inventory_sources_create
+        - controller.inventory_sources_list
+        - controller.inventory_sources_partial_update
+        - controller.inventory_sources_read
+        - controller.inventory_sources_update
+        - controller.inventory_sources_update_create
+        - controller.inventory_updates_list
+        - controller.inventory_updates_read
+        - controller.job_events_children_list
+        - controller.job_events_read
+        - controller.job_host_summaries_read
+        - controller.job_templates_bitbucket_dc_create
+        - controller.job_templates_copy_create
+        - controller.job_templates_copy_list
+        - controller.job_templates_create
+        - controller.job_templates_create
+        - controller.job_templates_delete
+        - controller.job_templates_github_create
+        - controller.job_templates_gitlab_create
+        - controller.job_templates_labels_list
+        - controller.job_templates_launch_create
+        - controller.job_templates_list
+        - controller.job_templates_partial_update
+        - controller.job_templates_read
+        - controller.job_templates_update
+        - controller.job_templates_webhook_key_create
+        - controller.job_templates_webhook_key_list
+        - controller.jobs_activity_stream_list
+        - controller.jobs_cancel_create
+        - controller.jobs_cancel_read
+        - controller.jobs_credentials_list
+        - controller.jobs_delete
+        - controller.jobs_job_events_list
+        - controller.jobs_list
+        - controller.jobs_read
+        - controller.jobs_relaunch_create
+        - controller.jobs_relaunch_read
+        - controller.jobs_stdout_read
+        - controller.mesh_visualizer_list
+        - controller.metrics_list
+        - controller.notification_templates_list
+        - controller.notifications_list
+        - controller.notifications_list
+        - controller.organizations_admins_list
+        - controller.organizations_list
+        - controller.organizations_projects_create
+        - controller.organizations_projects_list
+        - controller.organizations_teams_list
+        - controller.organizations_users_list
+        - controller.ping_list
+        - controller.project_updates_list
+        - controller.project_updates_read
+        - controller.projects_copy_list
+        - controller.projects_create
+        - controller.projects_list
+        - controller.projects_partial_update
+        - controller.projects_read
+        - controller.projects_read
+        - controller.projects_update
+        - controller.schedules_credentials_list
+        - controller.schedules_list
+        - controller.schedules_list
+        - controller.schedules_read
+        - controller.settings_list
+        - controller.settings_read
+        - controller.system_job_templates_list
+        - controller.system_job_templates_read
+        - controller.system_jobs_cancel_create
+        - controller.system_jobs_cancel_read
+        - controller.system_jobs_delete
+        - controller.system_jobs_list
+        - controller.system_jobs_read
+        - controller.teams_activity_stream_list
+        - controller.teams_list
+        - controller.unified_job_templates_list
+        - controller.unified_jobs_list
+        - controller.users_activity_stream_list
+        - controller.users_applications_create
+        - controller.users_applications_list
+        - controller.users_create
+        - controller.users_delete
+        - controller.users_list
+        - controller.users_organizations_list
+        - controller.users_partial_update
+        - controller.users_read
+        - controller.users_roles_create
+        - controller.users_roles_list
+        - controller.users_update
+        - controller.workflow_job_nodes_list
+        - controller.workflow_job_nodes_read
+        - controller.workflow_job_template_nodes_create
+        - controller.workflow_job_template_nodes_create_approval_template_create
+        - controller.workflow_job_template_nodes_create_approval_template_read
+        - controller.workflow_job_template_nodes_delete
+        - controller.workflow_job_template_nodes_list
+        - controller.workflow_job_template_nodes_read
+        - controller.workflow_job_template_nodes_update
+        - controller.workflow_job_template_nodes_update
+        - controller.workflow_job_templates_bitbucket_dc_create
+        - controller.workflow_job_templates_create
+        - controller.workflow_job_templates_create
+        - controller.workflow_job_templates_delete
+        - controller.workflow_job_templates_github_create
+        - controller.workflow_job_templates_gitlab_create
+        - controller.workflow_job_templates_launch_create
+        - controller.workflow_job_templates_list
+        - controller.workflow_job_templates_partial_update
+        - controller.workflow_job_templates_read
+        - controller.workflow_job_templates_update
+        - controller.workflow_job_templates_webhook_key_create
+        - controller.workflow_job_templates_webhook_key_list
+        - controller.workflow_jobs_cancel_create
+        - controller.workflow_jobs_delete
+        - controller.workflow_jobs_labels_list
+        - controller.workflow_jobs_list
+        - controller.workflow_jobs_read
+        - controller.workflow_jobs_relaunch_create
+        - controller.workflow_jobs_relaunch_list
+        - controller.workflow_jobs_workflow_nodes_list
+        - eda.activation_instances_list
+        - eda.activation_instances_logs_list
+        - eda.activations_list
+        - eda.audit_rules_list
+        - eda.rulebooks_list
+        - eda.users_partial_update
+        - galaxy.plugin_ansible_content_collections_index_versions_list
+        - galaxy.plugin_ansible_content_namespaces_list
+        - gateway.activitystream_list
+        - gateway.applications_list
+        - gateway.applications_list
+        - gateway.applications_tokens_list
+        - gateway.authenticator_users_list
+        - gateway.authenticator_users_move_create
+        - gateway.authenticator_users_retrieve
+        - gateway.authenticators_create
+        - gateway.authenticators_list
+        - gateway.authenticators_partial_update
+        - gateway.authenticators_users_list
+        - gateway.feature_flags_state_retrieve
+        - gateway.http_ports_create
+        - gateway.http_ports_list
+        - gateway.http_ports_routes_list
+        - gateway.organizations_admins_list
+        - gateway.organizations_users_associate_create
+        - gateway.organizations_users_disassociate_create
+        - gateway.organizations_users_list
+        - gateway.role_definitions_user_assignments_list
+        - gateway.routes_list
+        - gateway.service_clusters_create
+        - gateway.service_clusters_partial_update
+        - gateway.service_clusters_partial_update
+        - gateway.service_clusters_routes_list
+        - gateway.service_clusters_update
+        - gateway.service_clusters_update
+        - gateway.service_index_role_user_assignments_assign_create
+        - gateway.service_index_role_user_assignments_list
+        - gateway.service_index_role_user_assignments_unassign_create
+        - gateway.services_list
+        - gateway.services_list
+        - gateway.teams_admins_list
+        - gateway.teams_users_associate_create
+        - gateway.teams_users_disassociate_create
+        - gateway.teams_users_list
+        - gateway.tokens_list
+        - gateway.ui_plugin_routes_list
+        - gateway.users_authenticators_retrieve
+        - gateway.users_authorized_tokens_retrieve
+        - gateway.users_create
+        - gateway.users_destroy
+        - gateway.users_list
+        - gateway.users_organizations_list
+        - gateway.users_partial_update
+        - gateway.users_personal_tokens_retrieve
+        - gateway.users_retrieve
+        - gateway.users_retrieve
+        - gateway.users_teams_list
+        - gateway.users_tokens_retrieve
+        - gateway.users_update
+        - controller.projects_playbooks_read
+        - controller.v2_service-index_list
+        - controller.inventories_variable_data_read
+        - controller.ad_hoc_commands_stdout_read
+        - controller.project_updates_stdout_read
+        - controller.inventory_updates_stdout_read
+        - controller.config_create
+        - controller.config_delete
+        - controller.groups_delete
+        - controller.analytics_reports_list
+        - eda.projects_sync_create
+        - controller.job_events_read
+        - controller.projects_delete
+        - controller.inventories_read
+        - controller.schedules_zoneinfo_list
+        - controller.schedules_delete
+        - controller.system_jobs_read
+        - eda.projects_retrieve
+        - controller.analytics_reports_create
+        - controller.host_metrics_read
+        - controller.credentials_delete
+        - controller.inventories_delete
+        - controller.notifications_read
+        - controller.organizations_read
+        - controller.system_jobs_delete
+        - eda.projects_destroy
+        - eda.users_retrieve
+        - controller.host_metrics_delete
+        - controller.activity_stream_read
+        - controller.ad_hoc_commands_read
+        - controller.analytics_authorized_list
+        - controller.organizations_delete
+        - controller.credential_types_read
+        - controller.credentials_test_read
+        - controller.inventories_tree_read
+        - controller.ad_hoc_commands_delete
+        - controller.instance_groups_delete
+        - controller.projects_inventories_read
+        - controller.workflow_approvals_delete
+        - eda.rulebooks_retrieve
+        - controller.ad_hoc_command_events_read
+        - controller.analytics_adoption_rate_list
+        - controller.analytics_host_explorer_list
+        - controller.analytics_roi_templates_list
+        - controller.credential_types_test_read
+        - controller.inventories_script_read
+        - controller.ad_hoc_commands_cancel_read
+        - controller.execution_environments_read
+        - controller.notification_templates_read
+        - controller.v2_service-index_metadata_list
+        - controller.analytics_event_explorer_list
+        - controller.analytics_report_options_list
+        - controller.constructed_inventories_read
+        - controller.workflow_approvals_deny_read
+        - controller.organizations_teams_list
+        - controller.organizations_users_list
+        - controller.users_organizations_list
+        - eda.eda_credentials_test_create
+        - controller.hosts_job_events_list
+        - controller.inventories_root_groups_list
+        - controller.schedules_labels_list
+        - controller.inventories_hosts_list
+        - controller.groups_job_events_list
+        - controller.teams_credentials_list
+        - controller.users_credentials_list
+        - controller.inventories_groups_list
+        - controller.inventories_labels_list
+        - controller.instances_jobs_list
+        - controller.inventories_update_inventory_sources_create
+        - controller.job_templates_jobs_list
+        - controller.jobs_notifications_list
+        - controller.projects_schedules_list
+        - controller.schedules_jobs_list
+        - controller.hosts_smart_inventories_list
+        - controller.job_events_children_list
+        - controller.job_templates_labels_list
+        - controller.workflow_jobs_labels_list
+        - eda.users_partial_update
+        - controller.jobs_activity_stream_list
+        - controller.hosts_ad_hoc_commands_list
+        - controller.instances_peers_list
+        - controller.schedules_credentials_list
+        - controller.hosts_activity_stream_list
+        - controller.projects_copy_list
+        - controller.teams_activity_stream_list
+        - controller.users_activity_stream_list
+        - controller.groups_ad_hoc_commands_list
+        - controller.organizations_projects_list
+        - controller.groups_activity_stream_list
+        - controller.organizations_admins_list
+        - controller.hosts_inventory_sources_list
+        - controller.inventory_sources_hosts_list
+        - controller.job_templates_schedules_list
+        - controller.jobs_job_host_summaries_list
+        - controller.system_jobs_events_list
+        - controller.groups_inventory_sources_list
+        - controller.hosts_job_host_summaries_list
+        - controller.instance_groups_jobs_list
+        - controller.inventory_sources_groups_list
+        - controller.projects_project_updates_list
+        - controller.credentials_copy_list
+        - controller.inventories_copy_list
+        - controller.inventories_job_templates_list
+        - controller.projects_activity_stream_list
+        - controller.groups_job_host_summaries_list
+        - controller.instance_groups_instances_list
+        - controller.instances_instance_groups_list
+        - controller.job_templates_credentials_list
+        - controller.organizations_credentials_list
+        - controller.organizations_inventories_list
+        - controller.schedules_preview_create
+        - controller.schedules_instance_groups_list
+        - controller.system_jobs_notifications_list
+        - controller.workflow_job_nodes_labels_list
+        - galaxy.plugin_ansible_content_collections_all_versions_list
+        - controller.inventories_input_inventories_list
+        - controller.users_admin_of_organizations_list
+        - controller.analytics_reports_list
+        - controller.inventories_delete
+
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
+  annotations:
+    reloader.stakater.com/auto: "true"
   name: aap-mcp
   labels:
     app: aap-mcp
@@ -29,13 +424,8 @@ spec:
         ports:
         - containerPort: 3000
         env:
-        - name: PORT
+        - name: MCP_PORT
           value: "3000"
-        - name: BASE_URL
-          valueFrom:
-            configMapKeyRef:
-              name: aap-mcp-config
-              key: BASE_URL
         resources:
           requests:
             memory: "256Mi"
@@ -63,10 +453,17 @@ spec:
         - name: logs-volume
           mountPath: /app/logs
           readOnly: false
+        - name: config-volume
+          mountPath: /app/aap-mcp.yaml
+          subPath: aap-mcp.yaml
+          readOnly: true
       volumes:
       - name: logs-volume
         persistentVolumeClaim:
           claimName: aap-mcp-logs-pvc
+      - name: config-volume
+        configMap:
+          name: aap-mcp-config
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim

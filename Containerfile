@@ -46,9 +46,6 @@ COPY --from=builder /app/dist ./dist
 # Copy the OpenAPIv3 schema files
 COPY data/ ./data/
 
-# Copy the configuration
-COPY aap-mcp.yaml ./
-
 # Switch to non-root user
 USER 1000
 
