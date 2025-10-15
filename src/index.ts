@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import OASNormalize from 'oas-normalize';
+import OASNormalize from "oas-normalize";
 import { config } from "dotenv";
 import express from "express";
 import cors from "cors";
@@ -2122,18 +2122,23 @@ app.get('/logs', async (req, res) => {
     }
 
     // Get all log entries
-    let allEntries = await getAllLogEntries();
+    const allEntries = await getAllLogEntries();
+    let lastEntries = allEntries.slice(0, 1000);
 
     // Apply status code filter if provided
     const statusCodeFilter = req.query.status_code as string;
     if (statusCodeFilter) {
       const filterCode = parseInt(statusCodeFilter, 10);
       if (!isNaN(filterCode)) {
-        allEntries = allEntries.filter(entry => entry.return_code === filterCode);
+        lastEntries = lastEntries.filter(entry => entry.return_code === filterCode);
       }
     }
 
-    const last1000 = allEntries.slice(0, 1000);
+    // Apply tool filter if provided
+    const toolFilter = req.query.tool as string;
+    if (toolFilter) {
+      lastEntries = lastEntries.filter(entry => entry.toolName === toolFilter);
+    }
 
     // Helper function to format timestamp for display
     const formatTimestamp = (timestamp: string) => {
@@ -2158,16 +2163,14 @@ app.get('/logs', async (req, res) => {
       return 'Unknown';
     };
 
-    // Calculate summary statistics
-    const originalTotalRequests = (await getAllLogEntries()).length; // Original total before filtering
     const totalRequests = allEntries.length; // Total after filtering
-    const statusCodeSummary = last1000.reduce((acc, entry) => {
+    const statusCodeSummary = lastEntries.reduce((acc, entry) => {
       const code = entry.return_code;
       acc[code] = (acc[code] || 0) + 1;
       return acc;
     }, {} as Record<number, number>);
 
-    const toolSummary = last1000.reduce((acc, entry) => {
+    const toolSummary = lastEntries.reduce((acc, entry) => {
       acc[entry.toolName] = (acc[entry.toolName] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);
@@ -2328,7 +2331,7 @@ app.get('/logs', async (req, res) => {
             font-size: 0.8em;
             border-left: 3px solid #6c757d;
         }
-        .code-entry:hover {
+        .code-entry:hover, .tool-entry:hover {
             background-color: #e9ecef;
             cursor: pointer;
         }
@@ -2347,12 +2350,19 @@ app.get('/logs', async (req, res) => {
 
         <div class="summary">
             <h2>Log Summary</h2>
-            <p>Showing the last 1000 requests${statusCodeFilter ? ` out of ${totalRequests.toLocaleString()} filtered results` : ''} from ${originalTotalRequests.toLocaleString()} total logged requests.${statusCodeFilter ? ` <strong>Filtered by status code: ${statusCodeFilter}</strong>` : ''}</p>
+            <p>Showing the last requests${(statusCodeFilter || toolFilter) ? ` out of ${lastEntries.length} filtered results` : ''} from ${totalRequests.toLocaleString()} total logged requests.${statusCodeFilter ? ` <strong>Filtered by status code: ${statusCodeFilter}</strong>` : ''}${toolFilter ? ` <strong>Filtered by tool: ${toolFilter}</strong>` : ''}</p>
 
             ${statusCodeFilter ? `
             <div style="margin: 20px 0; padding: 15px; background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 5px;">
                 <strong>Filtering by status code: ${statusCodeFilter}</strong>
-                <a href="/logs" style="margin-left: 15px; padding: 5px 15px; background-color: #6c757d; color: white; text-decoration: none; border-radius: 4px;">Clear Filter</a>
+                <a href="/logs${toolFilter ? `?tool=${encodeURIComponent(toolFilter)}` : ''}" style="margin-left: 15px; padding: 5px 15px; background-color: #6c757d; color: white; text-decoration: none; border-radius: 4px;">Clear Status Filter</a>
+            </div>
+            ` : ''}
+
+            ${toolFilter ? `
+            <div style="margin: 20px 0; padding: 15px; background-color: #d1ecf1; border: 1px solid #bee5eb; border-radius: 5px;">
+                <strong>Filtering by tool: ${toolFilter}</strong>
+                <a href="/logs${statusCodeFilter ? `?status_code=${statusCodeFilter}` : ''}" style="margin-left: 15px; padding: 5px 15px; background-color: #6c757d; color: white; text-decoration: none; border-radius: 4px;">Clear Tool Filter</a>
             </div>
             ` : ''}
 
@@ -2375,9 +2385,9 @@ app.get('/logs', async (req, res) => {
                           .sort(([,a], [,b]) => b - a)
                           .slice(0, 8)
                           .map(([tool, count]) => `
-                        <div class="tool-entry">
+                        <a href="/logs?tool=${encodeURIComponent(tool)}" class="tool-entry" style="text-decoration: none; color: inherit; display: block; transition: background-color 0.2s ease;">
                             ${tool}: ${count}
-                        </div>
+                        </a>
                         `).join('')}
                     </div>
                 </div>
@@ -2396,7 +2406,7 @@ app.get('/logs', async (req, res) => {
                 </tr>
             </thead>
             <tbody>
-                ${last1000.map(entry => `
+                ${lastEntries.map(entry => `
                 <tr>
                     <td class="timestamp">${formatTimestamp(entry.timestamp)}</td>
                     <td>
