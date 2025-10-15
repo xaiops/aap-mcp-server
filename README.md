@@ -44,15 +44,15 @@ MCP_PORT=3000
 
 The service defaults to `http://localhost:44926` as the AAP base URL. To change this, modify the `BASE_URL` constant in `src/index.ts:24`.
 
-### User Personas
+### User Categories
 
-The service supports three user personas that determine which tools are available:
+The service supports three user categories that determine which tools are available:
 
 - **Anonymous**: No tools available (default for unauthenticated users)
 - **User**: Limited set of read-only tools for EDA, Controller, and Galaxy services
 - **Admin**: Full access to all tools including create, update, and delete operations
 
-Personas are automatically determined based on user permissions from the AAP token, but can be overridden using persona-specific endpoints.
+Categories are automatically determined based on user permissions from the AAP token, but can be overridden using category-specific endpoints.
 
 ## Usage
 
@@ -71,7 +71,7 @@ npm start
 The service provides several endpoints:
 
 - **Standard MCP**: `/mcp` (POST, GET, DELETE)
-- **Persona-specific**: `/{persona}/mcp` where persona is `anonymous`, `user`, or `admin`
+- **Category-specific**: `/{category}/mcp` where category is `anonymous`, `user`, or `admin`
 
 ### Authentication
 
@@ -114,18 +114,18 @@ npm run dev
 claude mcp add poc-aap-mcp -t http http://localhost:3000/mcp
 ```
 
-#### Option 3: Force Specific Persona
+#### Option 3: Force Specific Category
 
-To override automatic persona detection:
+To override automatic category detection:
 
 ```bash
-# Force admin persona
+# Force admin category
 claude mcp add poc-aap-mcp -t http http://localhost:3000/admin/mcp
 
-# Force user persona
+# Force user category
 claude mcp add poc-aap-mcp -t http http://localhost:3000/user/mcp
 
-# Force anonymous persona (no auth required)
+# Force anonymous category (no auth required)
 claude mcp add poc-aap-mcp -t http http://localhost:3000/anonymous/mcp
 ```
 
@@ -138,7 +138,7 @@ The service generates tools from AAP OpenAPI specifications for:
 - **Gateway**: User and team management, organizations, role definitions
 - **Galaxy**: Collection management and versions
 
-Tool availability depends on your user persona. A complete list of tools with sizes is generated in `tool_list.csv` when the service starts.
+Tool availability depends on your user category. A complete list of tools with sizes is generated in `tool_list.csv` when the service starts.
 
 ## Development
 
@@ -152,7 +152,7 @@ Tool availability depends on your user persona. A complete list of tools with si
 ### Key Features
 
 - Automatic OpenAPI specification loading from AAP services
-- Role-based access control through user personas
+- Role-based access control through user categories
 - Session management with token validation
 - Tool filtering based on user permissions
 - CORS support for web clients
@@ -163,7 +163,7 @@ To add support for additional AAP services:
 
 1. Add the OpenAPI specification URL to the `specUrls` array in `loadOpenApiSpecs()`
 2. Implement a `reformatFunc` to standardize tool names and paths
-3. Update the persona definitions to include relevant tools
+3. Update the category definitions to include relevant tools
 
 ## Container
 
@@ -193,7 +193,7 @@ podman run -e BASE_URL=http://your-aap-installation localhost/aap-mcp
 The service provides detailed console logging for:
 - OpenAPI specification loading
 - Session initialization and cleanup
-- Tool filtering by persona
+- Tool filtering by category
 - API request execution
 
 ## License

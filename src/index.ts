@@ -30,30 +30,30 @@ const CONFIG = {
 } as const;
 
 
-type Persona = string[];
+type Category = string[];
 
-interface PersonaConfig {
+interface CategoryConfig {
   record_api_queries?: boolean;
   'ignore-certificate-errors'?: boolean;
-  personas: Record<string, string[]>;
+  categories: Record<string, string[]>;
 }
 
-// Load personas from configuration file
-const loadPersonasFromConfig = (): PersonaConfig => {
+// Load categories from configuration file
+const loadCategoriesFromConfig = (): CategoryConfig => {
   const configPath = join(process.cwd(), 'aap-mcp.yaml');
   const configFile = readFileSync(configPath, 'utf8');
-  const config = yaml.load(configFile) as PersonaConfig;
+  const config = yaml.load(configFile) as CategoryConfig;
 
-  if (!config.personas) {
-    throw new Error('Invalid configuration: missing personas section');
+  if (!config.categories) {
+    throw new Error('Invalid configuration: missing categories section');
   }
 
   return config;
 };
 
-// Load personas from configuration
-const localConfig = loadPersonasFromConfig();
-const allPersonas: Record<string, Persona> = localConfig.personas;
+// Load categories from configuration
+const localConfig = loadCategoriesFromConfig();
+const allCategories: Record<string, Category> = localConfig.categories;
 
 // Log configuration settings
 console.log(`BASE_URL: ${CONFIG.BASE_URL}`);
@@ -169,38 +169,38 @@ const storeSessionData = (sessionId: string, token: string, permissions: {is_sup
   console.log(`Stored session data for ${sessionId}: superuser=${permissions.is_superuser}, auditor=${permissions.is_platform_auditor}`);
 };
 
-// Determine user persona based on permissions
-const getUserPersona = (sessionId: string | undefined, personaOverride?: string): Persona => {
-  // If a persona override is specified, use it regardless of permissions
-  if (personaOverride) {
-    const personaName = personaOverride.toLowerCase();
-    if (allPersonas[personaName]) {
-      return allPersonas[personaName];
+// Determine user category based on permissions
+const getUserCategory = (sessionId: string | undefined, categoryOverride?: string): Category => {
+  // If a category override is specified, use it regardless of permissions
+  if (categoryOverride) {
+    const categoryName = categoryOverride.toLowerCase();
+    if (allCategories[categoryName]) {
+      return allCategories[categoryName];
     } else {
-      console.warn(`Unknown persona override: ${personaOverride}, defaulting to anonymous`);
-      return allPersonas['anonymous'] || [];
+      console.warn(`Unknown category override: ${categoryOverride}, defaulting to anonymous`);
+      return allCategories['anonymous'] || [];
     }
   }
 
   if (!sessionId || !sessionData[sessionId]) {
-    return allPersonas['anonymous'] || []; // Default to anonymous persona for unauthenticated users
+    return allCategories['anonymous'] || []; // Default to anonymous category for unauthenticated users
   }
 
   const session = sessionData[sessionId];
-  // Administrators get the admin persona, regular users get the user persona
-  if (session.is_superuser && allPersonas['admin']) {
-    return allPersonas['admin'];
-  } else if (allPersonas['user']) {
-    return allPersonas['user'];
+  // Administrators get the admin category, regular users get the user category
+  if (session.is_superuser && allCategories['admin']) {
+    return allCategories['admin'];
+  } else if (allCategories['user']) {
+    return allCategories['user'];
   } else {
-    // Fallback to anonymous if user/admin personas don't exist
-    return allPersonas['anonymous'] || [];
+    // Fallback to anonymous if user/admin categories don't exist
+    return allCategories['anonymous'] || [];
   }
 };
 
-// Filter tools based on persona
-const filterToolsByPersona = (tools: ToolWithSize[], persona: Persona): ToolWithSize[] => {
-  return tools.filter(tool => persona.includes(tool.name));
+// Filter tools based on category
+const filterToolsByCategory = (tools: ToolWithSize[], category: Category): ToolWithSize[] => {
+  return tools.filter(tool => category.includes(tool.name));
 };
 
 // Load OpenAPI specifications from HTTP URLs with local fallback
@@ -416,27 +416,27 @@ server.setRequestHandler(ListToolsRequestSchema, async (request, extra) => {
   // Get the session ID from the transport context
   const sessionId = extra?.sessionId;
 
-  // Get persona override from transport if available
+  // Get category override from transport if available
   const transport = sessionId ? transports[sessionId] : null;
-  const personaOverride = transport ? (transport as any).personaOverride : undefined;
+  const categoryOverride = transport ? (transport as any).categoryOverride : undefined;
 
-  // Determine user persona based on session permissions or override
-  const persona = getUserPersona(sessionId, personaOverride);
+  // Determine user category based on session permissions or override
+  const category = getUserCategory(sessionId, categoryOverride);
 
-  // Filter tools based on persona
-  const filteredTools = filterToolsByPersona(allTools, persona);
+  // Filter tools based on category
+  const filteredTools = filterToolsByCategory(allTools, category);
 
-  // Determine persona type by comparing with known personas
-  let personaType = 'unknown';
-  for (const [name, tools] of Object.entries(allPersonas)) {
-    if (persona === tools) {
-      personaType = name;
+  // Determine category type by comparing with known categories
+  let categoryType = 'unknown';
+  for (const [name, tools] of Object.entries(allCategories)) {
+    if (category === tools) {
+      categoryType = name;
       break;
     }
   }
 
-  const overrideInfo = personaOverride ? ` (override: ${personaOverride})` : '';
-  console.log(`Returning ${filteredTools.length} tools for ${personaType} persona${overrideInfo} (session: ${sessionId || 'none'})`);
+  const overrideInfo = categoryOverride ? ` (override: ${categoryOverride})` : '';
+  console.log(`Returning ${filteredTools.length} tools for ${categoryType} category${overrideInfo} (session: ${sessionId || 'none'})`);
 
   return {
     tools: filteredTools.map(tool => ({
@@ -584,7 +584,7 @@ app.use(cors({
 
 
 // MCP POST endpoint handler
-const mcpPostHandler = async (req: express.Request, res: express.Response, personaOverride?: string) => {
+const mcpPostHandler = async (req: express.Request, res: express.Response, categoryOverride?: string) => {
   const sessionId = req.headers['mcp-session-id'] as string;
   const authHeader = req.headers['authorization'] as string;
 
@@ -605,11 +605,11 @@ const mcpPostHandler = async (req: express.Request, res: express.Response, perso
       transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
         onsessioninitialized: async (sessionId: string) => {
-          console.log(`Session initialized with ID: ${sessionId}${personaOverride ? ` with persona override: ${personaOverride}` : ''}`);
+          console.log(`Session initialized with ID: ${sessionId}${categoryOverride ? ` with category override: ${categoryOverride}` : ''}`);
           transports[sessionId] = transport;
 
-          // Store persona override and user-agent in transport for later access
-          (transport as any).personaOverride = personaOverride;
+          // Store category override and user-agent in transport for later access
+          (transport as any).categoryOverride = categoryOverride;
           (transport as any).userAgent = req.headers['user-agent'] || 'unknown';
 
           // Extract and validate the bearer token
@@ -681,7 +681,7 @@ const mcpPostHandler = async (req: express.Request, res: express.Response, perso
 };
 
 // MCP GET endpoint for SSE streams
-const mcpGetHandler = async (req: express.Request, res: express.Response, personaOverride?: string) => {
+const mcpGetHandler = async (req: express.Request, res: express.Response, categoryOverride?: string) => {
   const sessionId = req.headers['mcp-session-id'] as string;
   const authHeader = req.headers['authorization'] as string;
 
@@ -704,7 +704,7 @@ const mcpGetHandler = async (req: express.Request, res: express.Response, person
 };
 
 // MCP DELETE endpoint for session termination
-const mcpDeleteHandler = async (req: express.Request, res: express.Response, personaOverride?: string) => {
+const mcpDeleteHandler = async (req: express.Request, res: express.Response, categoryOverride?: string) => {
   const sessionId = req.headers['mcp-session-id'] as string;
 
   if (!sessionId || !transports[sessionId]) {
@@ -1088,21 +1088,21 @@ app.get('/tools/:name', async (req, res) => {
       return acc;
     }, { success: 0, error: 0 });
 
-    // Check which personas have access to this tool
-    const personasWithAccess = [];
-    const personaColors: Record<string, string> = {
+    // Check which categories have access to this tool
+    const categoriesWithAccess = [];
+    const categoryColors: Record<string, string> = {
       'anonymous': '#6c757d',
       'user': '#28a745',
       'admin': '#dc3545',
       'operator': '#17a2b8'
     };
 
-    for (const [personaName, personaTools] of Object.entries(allPersonas)) {
-      if (personaTools.includes(toolName)) {
-        personasWithAccess.push({
-          name: personaName,
-          displayName: personaName.charAt(0).toUpperCase() + personaName.slice(1),
-          color: personaColors[personaName] || '#6c757d'
+    for (const [categoryName, categoryTools] of Object.entries(allCategories)) {
+      if (categoryTools.includes(toolName)) {
+        categoriesWithAccess.push({
+          name: categoryName,
+          displayName: categoryName.charAt(0).toUpperCase() + categoryName.slice(1),
+          color: categoryColors[categoryName] || '#6c757d'
         });
       }
     }
@@ -1274,22 +1274,22 @@ app.get('/tools/:name', async (req, res) => {
             white-space: pre;
             font-size: 0.9em;
         }
-        .personas-section {
+        .categories-section {
             background-color: #f0f9ff;
             padding: 20px;
             border-radius: 8px;
             margin-bottom: 30px;
         }
-        .personas-section h2 {
+        .categories-section h2 {
             margin-top: 0;
             color: #0369a1;
         }
-        .persona-badges {
+        .category-badges {
             display: flex;
             gap: 10px;
             flex-wrap: wrap;
         }
-        .persona-badge {
+        .category-badge {
             padding: 8px 16px;
             border-radius: 20px;
             color: white;
@@ -1297,12 +1297,12 @@ app.get('/tools/:name', async (req, res) => {
             font-weight: bold;
             transition: opacity 0.3s ease;
         }
-        .persona-badge:hover {
+        .category-badge:hover {
             opacity: 0.8;
             text-decoration: none;
             color: white;
         }
-        .no-personas {
+        .no-categories {
             color: #6c757d;
             font-style: italic;
         }
@@ -1438,7 +1438,7 @@ app.get('/tools/:name', async (req, res) => {
     <div class="container">
         <div class="navigation">
             <a href="/tools" class="nav-link">← All Tools</a>
-            <a href="/persona" class="nav-link">Personas</a>
+            <a href="/category" class="nav-link">Categories</a>
             <a href="/export/tools/csv" class="nav-link">Download CSV</a>
         </div>
 
@@ -1529,17 +1529,17 @@ app.get('/tools/:name', async (req, res) => {
             </div>
         </div>
 
-        <div class="personas-section">
-            <h2>Available to Personas</h2>
-            ${personasWithAccess.length > 0 ? `
-            <div class="persona-badges">
-                ${personasWithAccess.map(persona => `
-                <a href="/persona/${persona.name}" class="persona-badge" style="background-color: ${persona.color};">
-                    ${persona.displayName}
+        <div class="categories-section">
+            <h2>Available to Categories</h2>
+            ${categoriesWithAccess.length > 0 ? `
+            <div class="category-badges">
+                ${categoriesWithAccess.map(category => `
+                <a href="/category/${category.name}" class="category-badge" style="background-color: ${category.color};">
+                    ${category.displayName}
                 </a>
                 `).join('')}
             </div>
-            ` : '<p class="no-personas">This tool is not available to any persona.</p>'}
+            ` : '<p class="no-categories">This tool is not available to any category.</p>'}
         </div>
 
         ${tool.inputSchema ? `
@@ -1646,11 +1646,11 @@ app.get('/export/tools/csv', (req, res) => {
   }
 });
 
-// Persona overview endpoint
-app.get('/persona', (req, res) => {
+// Category overview endpoint
+app.get('/category', (req, res) => {
   try {
-    // Define persona descriptions and colors
-    const personaConfig: Record<string, { description: string; color: string }> = {
+    // Define category descriptions and colors
+    const categoryConfig: Record<string, { description: string; color: string }> = {
       'anonymous': {
         description: 'Users without authentication - limited or no tool access',
         color: '#6c757d'
@@ -1669,20 +1669,20 @@ app.get('/persona', (req, res) => {
       }
     };
 
-    // Calculate stats for each persona
-    const personas = Object.entries(allPersonas).map(([personaName, personaTools]) => ({
-      name: personaName,
-      displayName: personaName.charAt(0).toUpperCase() + personaName.slice(1),
-      description: personaConfig[personaName]?.description || `${personaName.charAt(0).toUpperCase() + personaName.slice(1)} persona with specific tool access`,
-      tools: filterToolsByPersona(allTools, personaTools),
-      color: personaConfig[personaName]?.color || '#6c757d'
+    // Calculate stats for each category
+    const categories = Object.entries(allCategories).map(([categoryName, categoryTools]) => ({
+      name: categoryName,
+      displayName: categoryName.charAt(0).toUpperCase() + categoryName.slice(1),
+      description: categoryConfig[categoryName]?.description || `${categoryName.charAt(0).toUpperCase() + categoryName.slice(1)} category with specific tool access`,
+      tools: filterToolsByCategory(allTools, categoryTools),
+      color: categoryConfig[categoryName]?.color || '#6c757d'
     }));
 
-    // Calculate sizes and add to persona data
-    const personaStats = personas.map(persona => ({
-      ...persona,
-      toolCount: persona.tools.length,
-      totalSize: persona.tools.reduce((sum, tool) => sum + (tool.size || 0), 0)
+    // Calculate sizes and add to category data
+    const categoryStats = categories.map(category => ({
+      ...category,
+      toolCount: category.tools.length,
+      totalSize: category.tools.reduce((sum, tool) => sum + (tool.size || 0), 0)
     }));
 
     const htmlContent = `
@@ -1691,7 +1691,7 @@ app.get('/persona', (req, res) => {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Personas Overview - AAP MCP</title>
+    <title>Categories Overview - AAP MCP</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -1727,13 +1727,13 @@ app.get('/persona', (req, res) => {
         .nav-link:hover {
             background-color: #5a6268;
         }
-        .persona-grid {
+        .category-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
             gap: 20px;
             margin-bottom: 30px;
         }
-        .persona-card {
+        .category-card {
             border: 2px solid #e9ecef;
             border-radius: 8px;
             padding: 20px;
@@ -1742,19 +1742,19 @@ app.get('/persona', (req, res) => {
             transition: all 0.3s ease;
             cursor: pointer;
         }
-        .persona-card:hover {
+        .category-card:hover {
             border-color: #007acc;
             box-shadow: 0 4px 8px rgba(0,0,0,0.1);
             transform: translateY(-2px);
             text-decoration: none;
             color: inherit;
         }
-        .persona-header {
+        .category-header {
             display: flex;
             align-items: center;
             margin-bottom: 15px;
         }
-        .persona-icon {
+        .category-icon {
             width: 40px;
             height: 40px;
             border-radius: 50%;
@@ -1766,17 +1766,17 @@ app.get('/persona', (req, res) => {
             margin-right: 15px;
             font-size: 1.2em;
         }
-        .persona-title {
+        .category-title {
             font-size: 1.3em;
             font-weight: bold;
             margin: 0;
         }
-        .persona-description {
+        .category-description {
             color: #6c757d;
             margin-bottom: 15px;
             line-height: 1.4;
         }
-        .persona-stats {
+        .category-stats {
             display: flex;
             justify-content: space-between;
             background-color: #f8f9fa;
@@ -1831,7 +1831,7 @@ app.get('/persona', (req, res) => {
 </head>
 <body>
     <div class="container">
-        <h1>Personas Overview</h1>
+        <h1>Categories Overview</h1>
 
         <div class="navigation">
             <a href="/tools" class="nav-link">All Tools</a>
@@ -1840,15 +1840,15 @@ app.get('/persona', (req, res) => {
 
         <div class="summary">
             <h2>System Summary</h2>
-            <p>The AAP MCP system uses personas to control tool access based on user permissions. Each persona provides a different level of access to the available tools.</p>
+            <p>The AAP MCP system uses categories to control tool access based on user permissions. Each category provides a different level of access to the available tools.</p>
             <div class="summary-stats">
                 <div class="summary-stat">
                     <div class="summary-stat-number">${allTools.length}</div>
                     <div class="summary-stat-label">Total Tools</div>
                 </div>
                 <div class="summary-stat">
-                    <div class="summary-stat-number">${personas.length}</div>
-                    <div class="summary-stat-label">Personas</div>
+                    <div class="summary-stat-number">${categories.length}</div>
+                    <div class="summary-stat-label">Categories</div>
                 </div>
                 <div class="summary-stat">
                     <div class="summary-stat-number">${allTools.reduce((sum, tool) => sum + (tool.size || 0), 0).toLocaleString()}</div>
@@ -1857,23 +1857,23 @@ app.get('/persona', (req, res) => {
             </div>
         </div>
 
-        <div class="persona-grid">
-            ${personaStats.map(persona => `
-            <a href="/persona/${persona.name}" class="persona-card">
-                <div class="persona-header">
-                    <div class="persona-icon" style="background-color: ${persona.color};">
-                        ${persona.displayName.charAt(0)}
+        <div class="category-grid">
+            ${categoryStats.map(category => `
+            <a href="/category/${category.name}" class="category-card">
+                <div class="category-header">
+                    <div class="category-icon" style="background-color: ${category.color};">
+                        ${category.displayName.charAt(0)}
                     </div>
-                    <h3 class="persona-title">${persona.displayName}</h3>
+                    <h3 class="category-title">${category.displayName}</h3>
                 </div>
-                <p class="persona-description">${persona.description}</p>
-                <div class="persona-stats">
+                <p class="category-description">${category.description}</p>
+                <div class="category-stats">
                     <div class="stat">
-                        <div class="stat-number">${persona.toolCount}</div>
+                        <div class="stat-number">${category.toolCount}</div>
                         <div class="stat-label">Tools</div>
                     </div>
                     <div class="stat">
-                        <div class="stat-number">${persona.totalSize.toLocaleString()}</div>
+                        <div class="stat-number">${category.totalSize.toLocaleString()}</div>
                         <div class="stat-label">Characters</div>
                     </div>
                 </div>
@@ -1887,33 +1887,33 @@ app.get('/persona', (req, res) => {
     res.setHeader('Content-Type', 'text/html');
     res.send(htmlContent);
   } catch (error) {
-    console.error('Error generating persona overview:', error);
+    console.error('Error generating category overview:', error);
     res.status(500).json({
-      error: 'Failed to generate persona overview',
+      error: 'Failed to generate category overview',
       message: error instanceof Error ? error.message : String(error)
     });
   }
 });
 
-// Persona tools endpoint
-app.get('/persona/:name', (req, res) => {
+// Category tools endpoint
+app.get('/category/:name', (req, res) => {
   try {
-    const personaName = req.params.name.toLowerCase();
+    const categoryName = req.params.name.toLowerCase();
 
-    // Get the persona based on the name
-    const persona = allPersonas[personaName];
-    if (!persona) {
-      const availablePersonas = Object.keys(allPersonas).join(', ');
+    // Get the category based on the name
+    const category = allCategories[categoryName];
+    if (!category) {
+      const availableCategories = Object.keys(allCategories).join(', ');
       return res.status(404).json({
-        error: 'Persona not found',
-        message: `Persona '${req.params.name}' does not exist. Available personas: ${availablePersonas}`
+        error: 'Category not found',
+        message: `Category '${req.params.name}' does not exist. Available categories: ${availableCategories}`
       });
     }
 
-    const displayName = personaName.charAt(0).toUpperCase() + personaName.slice(1);
+    const displayName = categoryName.charAt(0).toUpperCase() + categoryName.slice(1);
 
-    // Filter tools based on persona
-    const filteredTools = filterToolsByPersona(allTools, persona);
+    // Filter tools based on category
+    const filteredTools = filterToolsByCategory(allTools, category);
 
     // Calculate total size
     const totalSize = filteredTools.reduce((sum, tool) => sum + (tool.size || 0), 0);
@@ -1935,7 +1935,7 @@ app.get('/persona/:name', (req, res) => {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${displayName} Persona Tools - AAP MCP</title>
+    <title>${displayName} Category Tools - AAP MCP</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -1955,7 +1955,7 @@ app.get('/persona/:name', (req, res) => {
             border-bottom: 2px solid #007acc;
             padding-bottom: 10px;
         }
-        .persona-badge {
+        .category-badge {
             display: inline-block;
             background-color: #007acc;
             color: white;
@@ -2045,24 +2045,24 @@ app.get('/persona/:name', (req, res) => {
 </head>
 <body>
     <div class="container">
-        <h1>${displayName} Persona Tools<span class="persona-badge">${filteredTools.length} tools</span></h1>
+        <h1>${displayName} Category Tools<span class="category-badge">${filteredTools.length} tools</span></h1>
 
         <div class="navigation">
-            ${Object.keys(allPersonas).map(name => `
-            <a href="/persona/${name}" class="nav-link ${personaName === name ? 'active' : ''}">${name.charAt(0).toUpperCase() + name.slice(1)}</a>
+            ${Object.keys(allCategories).map(name => `
+            <a href="/category/${name}" class="nav-link ${categoryName === name ? 'active' : ''}">${name.charAt(0).toUpperCase() + name.slice(1)}</a>
             `).join('')}
             <a href="/tools" class="nav-link">All Tools</a>
         </div>
 
         <div class="stats">
-            <strong>Persona:</strong> ${displayName}<br>
+            <strong>Category:</strong> ${displayName}<br>
             <strong>Available Tools:</strong> ${filteredTools.length}<br>
             <strong>Total Size:</strong> ${totalSize.toLocaleString()} characters
         </div>
 
         ${filteredTools.length === 0 ? `
         <div class="empty-state">
-            <p>No tools are available for the ${displayName} persona.</p>
+            <p>No tools are available for the ${displayName} category.</p>
         </div>
         ` : `
         <div class="actions">
@@ -2091,9 +2091,9 @@ app.get('/persona/:name', (req, res) => {
     res.setHeader('Content-Type', 'text/html');
     res.send(htmlContent);
   } catch (error) {
-    console.error('Error generating persona tool list:', error);
+    console.error('Error generating category tool list:', error);
     res.status(500).json({
-      error: 'Failed to generate persona tool list',
+      error: 'Failed to generate category tool list',
       message: error instanceof Error ? error.message : String(error)
     });
   }
@@ -2330,7 +2330,7 @@ app.get('/logs', async (req, res) => {
             <a href="/" class="nav-link">Dashboard</a>
             <a href="/tools" class="nav-link">Tools</a>
             <a href="/services" class="nav-link">Services</a>
-            <a href="/persona" class="nav-link">Personas</a>
+            <a href="/category" class="nav-link">Categories</a>
         </div>
 
         <div class="summary">
@@ -2601,7 +2601,7 @@ app.get('/services', (req, res) => {
         <div class="navigation">
             <a href="/" class="nav-link">Dashboard</a>
             <a href="/tools" class="nav-link">All Tools</a>
-            <a href="/persona" class="nav-link">Personas</a>
+            <a href="/category" class="nav-link">Categories</a>
         </div>
 
         <div class="summary">
@@ -2818,7 +2818,7 @@ app.get('/services/:name', (req, res) => {
             <a href="/" class="nav-link">Dashboard</a>
             <a href="/services" class="nav-link">All Services</a>
             <a href="/tools" class="nav-link">All Tools</a>
-            <a href="/persona" class="nav-link">Personas</a>
+            <a href="/category" class="nav-link">Categories</a>
         </div>
 
         <div class="stats">
@@ -2868,11 +2868,11 @@ app.get('/', (req, res) => {
     // Calculate summary statistics
     const totalSize = allTools.reduce((sum, tool) => sum + (tool.size || 0), 0);
 
-    // Calculate persona statistics dynamically
-    const personaStats: Record<string, { tools: ToolWithSize[]; size: number }> = {};
-    for (const [personaName, personaTools] of Object.entries(allPersonas)) {
-      const tools = filterToolsByPersona(allTools, personaTools);
-      personaStats[personaName] = {
+    // Calculate category statistics dynamically
+    const categoryStats: Record<string, { tools: ToolWithSize[]; size: number }> = {};
+    for (const [categoryName, categoryTools] of Object.entries(allCategories)) {
+      const tools = filterToolsByCategory(allTools, categoryTools);
+      categoryStats[categoryName] = {
         tools,
         size: tools.reduce((sum, tool) => sum + (tool.size || 0), 0)
       };
@@ -2954,7 +2954,7 @@ app.get('/', (req, res) => {
             margin-right: 20px;
         }
         .tools-icon { background: linear-gradient(45deg, #007acc, #0056b3); }
-        .personas-icon { background: linear-gradient(45deg, #28a745, #1e7e34); }
+        .categories-icon { background: linear-gradient(45deg, #28a745, #1e7e34); }
         .card-title {
             font-size: 1.8em;
             font-weight: bold;
@@ -3007,10 +3007,10 @@ app.get('/', (req, res) => {
             text-decoration: none;
             color: white;
         }
-        .btn-personas {
+        .btn-categories {
             background: linear-gradient(45deg, #28a745, #1e7e34);
         }
-        .btn-personas:hover {
+        .btn-categories:hover {
             background: linear-gradient(45deg, #1e7e34, #155724);
             box-shadow: 0 5px 15px rgba(40,167,69,0.4);
         }
@@ -3078,8 +3078,8 @@ app.get('/', (req, res) => {
                 <div class="summary-number">${Object.keys(serviceStats).length}</div>
             </div>
             <div class="summary-card">
-                <h3>Personas</h3>
-                <div class="summary-number">${Object.keys(allPersonas).length}</div>
+                <h3>Categories</h3>
+                <div class="summary-number">${Object.keys(allCategories).length}</div>
             </div>
         </div>
 
@@ -3148,22 +3148,22 @@ app.get('/', (req, res) => {
 
             <div class="card">
                 <div class="card-header">
-                    <div class="card-icon personas-icon">👥</div>
-                    <h2 class="card-title">Personas</h2>
+                    <div class="card-icon categories-icon">👥</div>
+                    <h2 class="card-title">Categories</h2>
                 </div>
                 <p class="card-description">
-                    Understand the different user personas and their tool access levels. Personas control which tools are available based on user permissions and authentication status.
+                    Understand the different user categories and their tool access levels. Categories control which tools are available based on user permissions and authentication status.
                 </p>
                 <div class="card-stats">
-                    ${Object.entries(personaStats).map(([personaName, stats]) => `
+                    ${Object.entries(categoryStats).map(([categoryName, stats]) => `
                     <div class="stat">
                         <div class="stat-number">${stats.tools.length} tools</div>
-                        <div class="stat-label">${personaName.charAt(0).toUpperCase() + personaName.slice(1)}</div>
+                        <div class="stat-label">${categoryName.charAt(0).toUpperCase() + categoryName.slice(1)}</div>
                     </div>
                     `).join('')}
                 </div>
                 <br>
-                <a href="/persona" class="btn btn-personas">Explore Personas</a>
+                <a href="/category" class="btn btn-categories">Explore Categories</a>
             </div>
 
             ${recordApiQueries ? `
@@ -3214,23 +3214,23 @@ app.post('/mcp', (req, res) => mcpPostHandler(req, res));
 app.get('/mcp', (req, res) => mcpGetHandler(req, res));
 app.delete('/mcp', (req, res) => mcpDeleteHandler(req, res));
 
-// Persona-specific routes
-app.post('/:persona/mcp', (req, res) => {
-  const persona = req.params.persona;
-  console.log(`Persona-specific POST request for persona: ${persona}`);
-  return mcpPostHandler(req, res, persona);
+// Category-specific routes
+app.post('/:category/mcp', (req, res) => {
+  const category = req.params.category;
+  console.log(`Category-specific POST request for category: ${category}`);
+  return mcpPostHandler(req, res, category);
 });
 
-app.get('/:persona/mcp', (req, res) => {
-  const persona = req.params.persona;
-  console.log(`Persona-specific GET request for persona: ${persona}`);
-  return mcpGetHandler(req, res, persona);
+app.get('/:category/mcp', (req, res) => {
+  const category = req.params.category;
+  console.log(`Category-specific GET request for category: ${category}`);
+  return mcpGetHandler(req, res, category);
 });
 
-app.delete('/:persona/mcp', (req, res) => {
-  const persona = req.params.persona;
-  console.log(`Persona-specific DELETE request for persona: ${persona}`);
-  return mcpDeleteHandler(req, res, persona);
+app.delete('/:category/mcp', (req, res) => {
+  const category = req.params.category;
+  console.log(`Category-specific DELETE request for category: ${category}`);
+  return mcpDeleteHandler(req, res, category);
 });
 
 async function main(): Promise<void> {
@@ -3240,12 +3240,12 @@ async function main(): Promise<void> {
     allTools = await generateTools();
     console.log(`Successfully loaded ${allTools.length} tools`);
 
-    // Calculate and display persona sizes
-    console.log('\n=== Persona Size Summary ===');
-    for (const [personaName, personaTools] of Object.entries(allPersonas)) {
-      const tools = filterToolsByPersona(allTools, personaTools);
+    // Calculate and display category sizes
+    console.log('\n=== Category Size Summary ===');
+    for (const [categoryName, categoryTools] of Object.entries(allCategories)) {
+      const tools = filterToolsByCategory(allTools, categoryTools);
       const size = tools.reduce((sum, tool) => sum + (tool.size || 0), 0);
-      console.log(`${personaName.charAt(0).toUpperCase() + personaName.slice(1)}: ${tools.length} tools, ${size.toLocaleString()} characters`);
+      console.log(`${categoryName.charAt(0).toUpperCase() + categoryName.slice(1)}: ${tools.length} tools, ${size.toLocaleString()} characters`);
     }
     console.log('============================\n');
 
