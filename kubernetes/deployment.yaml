@@ -13,6 +13,14 @@ data:
     enable_ui: true
     base_url: https://99.79.76.250
 
+    services:
+      - name: controller
+        local_path: data/controller-schema.json
+      - name: galaxy
+        local_path: data/galaxy-schema.json
+      - name: gateway
+      - name: eda
+
     categories:
       job_management:
         - controller.job_templates_launch_create

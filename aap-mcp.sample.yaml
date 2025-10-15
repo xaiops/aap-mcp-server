@@ -1,16 +1,40 @@
 ---
 # Configuration for API query recording
-record_api_queries: false
+# record_api_queries: false
 
 # Configuration for HTTPS certificate validation
-ignore-certificate-errors: false
+# ignore-certificate-errors: false
 
 # Configuration for Web UI (defaults to false if not specified)
 # enable_ui: false
 
 # Configuration for base URL (defaults to https://localhost if not specified)
 # Lower priority than BASE_URL environment variable
-base_url: "https://example.com:8443"
+# base_url: "https://localhost:8443"
+
+# Configuration for services (list of service configurations)
+# Each service has a name that must be one of: controller, galaxy, gateway, eda
+# Optional url, local_path, and enabled can override defaults
+# If local_path is not specified, it defaults to the url value
+# If enabled is not specified, it defaults to true
+
+services:
+  - name: controller
+    # url: "https://custom-controller.example.com/api/v2/schema/"
+    # local_path: "/custom/path/controller-schema.json"  # defaults to url if not specified
+    # enabled: true                                       # defaults to true if not specified
+  - name: galaxy
+    # url: "https://custom-galaxy.example.com/api/v3/openapi.json"
+    # local_path: "/custom/path/galaxy-openapi.json"     # defaults to url if not specified
+    # enabled: false                                      # set to false to disable this service
+  - name: gateway
+    # url: "https://custom-gateway.example.com/api/v1/docs/schema/"
+    # local_path: "/custom/path/gateway-schema.json"     # defaults to url if not specified
+    # enabled: true                                       # defaults to true if not specified
+  - name: eda
+    # url: "https://custom-eda.example.com/api/v1/openapi.json"
+    # local_path: "/custom/path/eda-openapi.json"        # defaults to url if not specified
+    # enabled: true                                       # defaults to true if not specified
 
 categories:
   job_management:
@@ -22,7 +46,7 @@ categories:
     - controller.jobs_job_events_list
     - controller.jobs_cancel_create
     - controller.workflow_jobs_cancel_create
-    - controller.jobs_relaunch_create     
+    - controller.jobs_relaunch_create
     - controller.jobs_list
     - eda.activation_instances_list
     - eda.activation_instances_logs_list
@@ -39,5 +63,18 @@ categories:
     - controller.hosts_variable_data_read
     - controller.groups_list
     - controller.groups_create
-    # controller: /api/v2/hosts/{id}/insights/
-    # controller: /api/v2/settings/database/
+
+  system_monitoring:
+    - controller.ping_list
+    - controller.config_list
+    - controller.instance_groups_list
+    - controller.instance_groups_create
+    - controller.mesh_visualizer_list
+    - controller.instances_create
+    - gateway.activitystream_list
+    - gateway.authenticators_list
+    - gateway.http_ports_list
+    - gateway.http_ports_create
+    - controller.activity_stream_list
+    - controller.instances_read
+    - gateway.feature_flags_state_retrieve

@@ -26,19 +26,27 @@ config();
 
 type Category = string[];
 
-interface CategoryConfig {
+export interface ServiceConfig {
+  name: 'controller' | 'galaxy' | 'gateway' | 'eda';
+  url?: string;
+  local_path?: string;
+  enabled?: boolean;
+}
+
+interface AapMcpConfig {
   record_api_queries?: boolean;
   'ignore-certificate-errors'?: boolean;
   enable_ui?: boolean;
   base_url?: string;
+  services?: ServiceConfig[];
   categories: Record<string, string[]>;
 }
 
-// Load categories from configuration file
-const loadCategoriesFromConfig = (): CategoryConfig => {
+// Load configuration from file
+const loadConfig = (): AapMcpConfig => {
   const configPath = join(process.cwd(), 'aap-mcp.yaml');
   const configFile = readFileSync(configPath, 'utf8');
-  const config = yaml.load(configFile) as CategoryConfig;
+  const config = yaml.load(configFile) as AapMcpConfig;
 
   if (!config.categories) {
     throw new Error('Invalid configuration: missing categories section');
@@ -47,8 +55,8 @@ const loadCategoriesFromConfig = (): CategoryConfig => {
   return config;
 };
 
-// Load categories from configuration
-const localConfig = loadCategoriesFromConfig();
+// Load configuration
+const localConfig = loadConfig();
 const allCategories: Record<string, Category> = localConfig.categories;
 
 // Configuration constants (with priority: env var > config file > default)
@@ -72,6 +80,10 @@ console.log(`Certificate validation: ${ignoreCertificateErrors ? 'DISABLED' : 'E
 // Get UI enable setting (defaults to false)
 const enableUI = localConfig.enable_ui ?? false;
 console.log(`Web UI: ${enableUI ? 'ENABLED' : 'DISABLED'}`);
+
+// Get services configuration
+const servicesConfig = localConfig.services || [];
+console.log(`Services configured: ${servicesConfig.length > 0 ? servicesConfig.map(s => s.name).join(', ') : 'none'}`);
 
 // Configure HTTPS certificate validation globally
 if (ignoreCertificateErrors) {
@@ -212,90 +224,106 @@ const filterToolsByCategory = (tools: ToolWithSize[], category: Category): ToolW
 
 // Load OpenAPI specifications from HTTP URLs with local fallback
 const loadOpenApiSpecs = async (): Promise<OpenApiSpecEntry[]> => {
-  const specUrls: OpenApiSpecEntry[] = [
-    {
+  // Default configurations for each service
+  const defaultConfigs: Record<string, { url: string; enabled?: boolean }> = {
+    eda: {
       url: `${CONFIG.BASE_URL}/api/eda/v1/openapi.json`,
-      localPath: join(process.cwd(), 'data/eda-openapi.json'),
-      reformatFunc: (tool: AAPMcpToolDefinition) => {
-        tool.name = "eda." + tool.name;
-        tool.pathTemplate = "/api/eda/v1" + tool.pathTemplate;
-        return tool;
-      },
-      service: 'eda',
     },
-    {
+    gateway: {
       url: `${CONFIG.BASE_URL}/api/gateway/v1/docs/schema/`,
-      localPath: join(process.cwd(), 'data/gateway-schema.json'),
-      reformatFunc: (tool: AAPMcpToolDefinition) => {
-        tool.name = "gateway." + tool.name;
-        tool.description = tool.description?.trim().split('\n\n')[0];
-        if (tool.description?.includes("Legacy")) {
-          return false
-        }
-        return tool;
-      },
-      service: 'gateway',
     },
-    {
+    galaxy: {
       url: `${CONFIG.BASE_URL}/api/galaxy/v3/openapi.json`,
-      localPath: join(process.cwd(), 'data/galaxy-openapi.json'),
-      reformatFunc: (tool: AAPMcpToolDefinition) => {
-        if (tool.pathTemplate?.startsWith("/api/galaxy/_ui")) {
-          return false
-        }
-        if (!tool.name.startsWith("api_galaxy_v3")) {
-          // Hide the other namespaces
-          return false
-        }
-        tool.name = tool.name.replace(/(api_galaxy_v3_|api_galaxy_|)(.+)/, "galaxy.$2");
-        return tool;
-      },
-      service: 'galaxy',
     },
-    {
+    controller: {
       url: "https://s3.amazonaws.com/awx-public-ci-files/release_4.6/schema.json",
-      // The upstream file is in Swagger2 format. We use our local copy which
-      // was manually converted
-      localPath: join(process.cwd(), 'data/controller-schema.json'),
-      reformatFunc: (tool: AAPMcpToolDefinition) => {
-        tool.pathTemplate = tool.pathTemplate?.replace("/api/v2", "/api/controller/v2");
-        tool.name = tool.name.replace(/api_(.+)/, "controller.$1");
-        tool.description = tool.description?.trim().split('\n\n')[0];
-        return tool;
-      },
-      service: 'controller',
     },
-  ];
+  };
+
+  // Reformat functions for each service
+  const reformatFunctions: Record<string, (tool: AAPMcpToolDefinition) => AAPMcpToolDefinition | false> = {
+    eda: (tool: AAPMcpToolDefinition) => {
+      tool.name = "eda." + tool.name;
+      tool.pathTemplate = "/api/eda/v1" + tool.pathTemplate;
+      return tool;
+    },
+    gateway: (tool: AAPMcpToolDefinition) => {
+      tool.name = "gateway." + tool.name;
+      tool.description = tool.description?.trim().split('\n\n')[0];
+      if (tool.description?.includes("Legacy")) {
+        return false
+      }
+      return tool;
+    },
+    galaxy: (tool: AAPMcpToolDefinition) => {
+      if (tool.pathTemplate?.startsWith("/api/galaxy/_ui")) {
+        return false
+      }
+      if (!tool.name.startsWith("api_galaxy_v3")) {
+        // Hide the other namespaces
+        return false
+      }
+      tool.name = tool.name.replace(/(api_galaxy_v3_|api_galaxy_|)(.+)/, "galaxy.$2");
+      return tool;
+    },
+    controller: (tool: AAPMcpToolDefinition) => {
+      tool.pathTemplate = tool.pathTemplate?.replace("/api/v2", "/api/controller/v2");
+      tool.name = tool.name.replace(/api_(.+)/, "controller.$1");
+      tool.description = tool.description?.trim().split('\n\n')[0];
+      return tool;
+    },
+  };
+
+  // Build spec entries from configuration
+  const enabledServiceNames = servicesConfig.map(s => s.name);
+  const servicesToLoad = enabledServiceNames.length > 0 ? servicesConfig : [];
+
+  const specUrls: OpenApiSpecEntry[] = servicesToLoad
+    .filter(serviceConfig => {
+      const defaults = defaultConfigs[serviceConfig.name];
+      const enabled = serviceConfig.enabled ?? true;
+      return enabled;
+    })
+    .map(serviceConfig => {
+      const defaults = defaultConfigs[serviceConfig.name];
+      const url = serviceConfig.url || defaults.url;
+      return {
+        url: url,
+        localPath: serviceConfig.local_path,
+        reformatFunc: reformatFunctions[serviceConfig.name],
+        service: serviceConfig.name,
+      };
+    });
+
+  console.log(`Loading OpenAPI specs for services: ${enabledServiceNames.length > 0 ? enabledServiceNames.join(', ') : 'all'} (${specUrls.length} specs)`);
 
   for (const specEntry of specUrls) {
-    // try {
-    //   console.log(`Fetching OpenAPI spec from: ${specEntry.url}`);
-    //   const response = await fetch(specEntry.url, {
-    //     headers: {
-    //       'Accept': 'application/json'
-    //     }
-    //   });
-
-    //   if (!response.ok) {
-    //     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    //   }
-
-    //   specEntry.spec = await response.json();
-    //   console.log(`Successfully loaded OpenAPI spec from: ${specEntry.url}`);
-    // } catch (error) {
-    //   console.error(`Error fetching OpenAPI spec from ${specEntry.url}:`, error);
-
-    //   // Try to load from local file as fallback
-    //   try {
-        console.log(`Attempting to load from local file: ${specEntry.localPath}`);
-        const localContent = readFileSync(specEntry.localPath!, 'utf8');
+    try {
+      // If local_path is set, use it directly instead of fetching from URL
+      if (specEntry.localPath) {
+        console.log(`Loading OpenAPI spec from local file: ${specEntry.localPath}`);
+        const localContent = readFileSync(specEntry.localPath, 'utf8');
         specEntry.spec = JSON.parse(localContent);
         console.log(`Successfully loaded OpenAPI spec from local file: ${specEntry.localPath}`);
-      // } catch (localError) {
-      //   console.error(`Error loading local OpenAPI spec from ${specEntry.localPath}:`, localError);
-      //   // Continue with other URLs even if both remote and local fail
-      // }
-    // }
+      } else {
+        console.log(`Fetching OpenAPI spec from: ${specEntry.url}`);
+        const response = await fetch(specEntry.url, {
+          headers: {
+            'Accept': 'application/json'
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        specEntry.spec = await response.json();
+        console.log(`Successfully loaded OpenAPI spec from: ${specEntry.url}`);
+      }
+    } catch (error) {
+      console.error(`Error loading OpenAPI spec from ${specEntry.localPath ? specEntry.localPath : specEntry.url}:`, error);
+      // Continue with other specs even if this one fails
+    }
   }
 
   console.log(`Number of OpenAPIv3 files loaded=${specUrls.length}`)
