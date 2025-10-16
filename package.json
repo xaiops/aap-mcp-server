@@ -1,11 +1,11 @@
 {
-  "name": "poc-aap-mcp",
+  "name": "aap-mcp-server",
   "version": "1.0.0",
   "type": "module",
   "description": "",
   "main": "dist/index.js",
   "bin": {
-    "poc-aap-mcp": "dist/index.js"
+    "aap-mcp-server": "dist/index.js"
   },
   "scripts": {
     "build": "tsc",
