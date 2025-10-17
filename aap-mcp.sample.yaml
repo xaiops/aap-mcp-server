@@ -47,6 +47,7 @@ categories:
     - controller.jobs_cancel_create
     - controller.workflow_jobs_cancel_create
     - controller.jobs_relaunch_create
+    - controller.workflow_jobs_relaunch_create
     - controller.jobs_list
     - eda.activation_instances_list
     - eda.activation_instances_logs_list
