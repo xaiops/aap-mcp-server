@@ -342,3 +342,5 @@ export const renderDashboard = (data: DashboardData): string => {
 </body>
 </html>`;
 };
+
+export type { DashboardData };

@@ -1,4 +1,4 @@
-export { renderDashboard } from './dashboard.js';
+export { renderDashboard, type DashboardData } from './dashboard.js';
 export { renderToolsList, type ToolWithSuccessRate } from './tools.js';
 export { renderToolDetails, type LogEntry, type CategoryWithAccess, type ToolDetailsData } from './tool-details.js';
 export { renderLogs, type LogsEntry, type LogsData } from './logs.js';
