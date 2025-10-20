@@ -55,8 +55,6 @@ data:
         # controller: /api/v2/settings/database/
 
       system_monitoring:
-        - controller.ping_list
-        - controller.config_list
         - controller.instance_groups_list
         - controller.instance_groups_create
         - controller.instance_groups_read
@@ -68,6 +66,7 @@ data:
         - gateway.http_ports_create
         - controller.activity_stream_list
         - controller.instances_read
+        - gateway.status_retrieve
         - gateway.feature_flags_state_retrieve
 
 

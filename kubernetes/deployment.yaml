@@ -53,8 +53,6 @@ data:
         # controller: /api/v2/settings/database/
 
       system_monitoring:
-        - controller.ping_list
-        - controller.config_list
         - controller.instance_groups_list
         - controller.instance_groups_create
         - controller.instance_groups_read
@@ -66,6 +64,7 @@ data:
         - gateway.http_ports_create
         - controller.activity_stream_list
         - controller.instances_read
+        - gateway.status_retrieve
         - gateway.feature_flags_state_retrieve
 
       staging:
@@ -407,6 +406,7 @@ data:
         - controller.users_admin_of_organizations_list
         - controller.analytics_reports_list
         - controller.inventories_delete
+        - gateway.status_retrieve
 
 ---
 apiVersion: apps/v1
