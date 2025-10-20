@@ -20,18 +20,18 @@ import { join } from "path";
 import * as yaml from "js-yaml";
 import { ToolLogger, type LogEntry } from "./logger";
 import { renderDashboard, renderToolsList, renderToolDetails, renderCategoriesOverview, renderCategoryTools, renderLogs, renderServicesOverview, renderServiceTools, type ToolWithSuccessRate, type ToolDetailsData, type CategoryWithAccess, type CategoriesOverviewData, type CategoryToolsData, type LogsData, type ServicesOverviewData, type ServiceToolsData, type DashboardData } from "./views/index";
+import {
+  loadOpenApiSpecs,
+  type AAPMcpToolDefinition,
+  type OpenApiSpecEntry,
+  type ServiceConfig
+} from './openapi-loader.js';
 
 // Load environment variables
 config();
 
 type Category = string[];
 
-export interface ServiceConfig {
-  name: 'controller' | 'galaxy' | 'gateway' | 'eda';
-  url?: string;
-  local_path?: string;
-  enabled?: boolean;
-}
 
 interface AapMcpConfig {
   record_api_queries?: boolean;
@@ -92,18 +92,6 @@ if (ignoreCertificateErrors) {
 }
 
 // TypeScript interfaces
-interface AAPMcpToolDefinition extends McpToolDefinition {
-  deprecated: boolean;
-  service?: string;
-}
-
-interface OpenApiSpecEntry {
-  url: string;
-  localPath?: string;
-  reformatFunc: (tool: AAPMcpToolDefinition) => AAPMcpToolDefinition | false;
-  spec?: any;
-  service?: string;
-}
 
 interface SessionData {
   [sessionId: string]: {
@@ -229,117 +217,10 @@ const getCategoryColor = (categoryName: string): string => {
   return colors[hash % colors.length];
 };
 
-// Load OpenAPI specifications from HTTP URLs with local fallback
-const loadOpenApiSpecs = async (): Promise<OpenApiSpecEntry[]> => {
-  // Default configurations for each service
-  const defaultConfigs: Record<string, { url: string; enabled?: boolean }> = {
-    eda: {
-      url: `${CONFIG.BASE_URL}/api/eda/v1/openapi.json`,
-    },
-    gateway: {
-      url: `${CONFIG.BASE_URL}/api/gateway/v1/docs/schema/`,
-    },
-    galaxy: {
-      url: `${CONFIG.BASE_URL}/api/galaxy/v3/openapi.json`,
-    },
-    controller: {
-      url: "https://s3.amazonaws.com/awx-public-ci-files/release_4.6/schema.json",
-    },
-  };
-
-  // Reformat functions for each service
-  const reformatFunctions: Record<string, (tool: AAPMcpToolDefinition) => AAPMcpToolDefinition | false> = {
-    eda: (tool: AAPMcpToolDefinition) => {
-      tool.name = "eda." + tool.name;
-      tool.pathTemplate = "/api/eda/v1" + tool.pathTemplate;
-      return tool;
-    },
-    gateway: (tool: AAPMcpToolDefinition) => {
-      tool.name = "gateway." + tool.name;
-      tool.description = tool.description?.trim().split('\n\n')[0];
-      if (tool.description?.includes("Legacy")) {
-        return false
-      }
-      return tool;
-    },
-    galaxy: (tool: AAPMcpToolDefinition) => {
-      if (tool.pathTemplate?.startsWith("/api/galaxy/_ui")) {
-        return false
-      }
-      if (!tool.name.startsWith("api_galaxy_v3")) {
-        // Hide the other namespaces
-        return false
-      }
-      tool.name = tool.name.replace(/(api_galaxy_v3_|api_galaxy_|)(.+)/, "galaxy.$2");
-      return tool;
-    },
-    controller: (tool: AAPMcpToolDefinition) => {
-      tool.pathTemplate = tool.pathTemplate?.replace("/api/v2", "/api/controller/v2");
-      tool.name = tool.name.replace(/api_(.+)/, "controller.$1");
-      tool.description = tool.description?.trim().split('\n\n')[0];
-      return tool;
-    },
-  };
-
-  // Build spec entries from configuration
-  const enabledServiceNames = servicesConfig.map(s => s.name);
-  const servicesToLoad = enabledServiceNames.length > 0 ? servicesConfig : [];
-
-  const specUrls: OpenApiSpecEntry[] = servicesToLoad
-    .filter(serviceConfig => {
-      const defaults = defaultConfigs[serviceConfig.name];
-      const enabled = serviceConfig.enabled ?? true;
-      return enabled;
-    })
-    .map(serviceConfig => {
-      const defaults = defaultConfigs[serviceConfig.name];
-      const url = serviceConfig.url || defaults.url;
-      return {
-        url: url,
-        localPath: serviceConfig.local_path,
-        reformatFunc: reformatFunctions[serviceConfig.name],
-        service: serviceConfig.name,
-      };
-    });
-
-  console.log(`Loading OpenAPI specs for services: ${enabledServiceNames.length > 0 ? enabledServiceNames.join(', ') : 'all'} (${specUrls.length} specs)`);
-
-  for (const specEntry of specUrls) {
-    try {
-      // If local_path is set, use it directly instead of fetching from URL
-      if (specEntry.localPath) {
-        console.log(`Loading OpenAPI spec from local file: ${specEntry.localPath}`);
-        const localContent = readFileSync(specEntry.localPath, 'utf8');
-        specEntry.spec = JSON.parse(localContent);
-        console.log(`Successfully loaded OpenAPI spec from local file: ${specEntry.localPath}`);
-      } else {
-        console.log(`Fetching OpenAPI spec from: ${specEntry.url}`);
-        const response = await fetch(specEntry.url, {
-          headers: {
-            'Accept': 'application/json'
-          }
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        specEntry.spec = await response.json();
-        console.log(`Successfully loaded OpenAPI spec from: ${specEntry.url}`);
-      }
-    } catch (error) {
-      console.error(`Error loading OpenAPI spec from ${specEntry.localPath ? specEntry.localPath : specEntry.url}:`, error);
-      // Continue with other specs even if this one fails
-    }
-  }
-
-  console.log(`Number of OpenAPIv3 files loaded=${specUrls.length}`)
-  return specUrls;
-};
 
 // Generate tools from OpenAPI specs
 const generateTools = async (): Promise<ToolWithSize[]> => {
-  const openApiSpecs = await loadOpenApiSpecs();
+  const openApiSpecs = await loadOpenApiSpecs(servicesConfig, CONFIG.BASE_URL);
   let rawToolList: AAPMcpToolDefinition[] = [];
 
   for (const spec of openApiSpecs) {
