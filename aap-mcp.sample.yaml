@@ -66,10 +66,9 @@ categories:
     - controller.groups_create
 
   system_monitoring:
-    - controller.ping_list
-    - controller.config_list
     - controller.instance_groups_list
     - controller.instance_groups_create
+    - controller.instance_groups_read
     - controller.mesh_visualizer_list
     - controller.instances_create
     - gateway.activitystream_list
@@ -78,4 +77,5 @@ categories:
     - gateway.http_ports_create
     - controller.activity_stream_list
     - controller.instances_read
+    - gateway.status_retrieve
     - gateway.feature_flags_state_retrieve

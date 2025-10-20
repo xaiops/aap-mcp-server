@@ -55,19 +55,18 @@ data:
         # controller: /api/v2/settings/database/
 
       system_monitoring:
-        - controller.ping_list
-        - controller.config_list
         - controller.instance_groups_list
         - controller.instance_groups_create
+        - controller.instance_groups_read
         - controller.mesh_visualizer_list
         - controller.instances_create
         - gateway.activitystream_list
         - gateway.authenticators_list
         - gateway.http_ports_list
-        - gateway.http_ports_create  
-        # controller: /api/v2/instance_groups/{id}/capacity/
+        - gateway.http_ports_create
         - controller.activity_stream_list
         - controller.instances_read
+        - gateway.status_retrieve
         - gateway.feature_flags_state_retrieve
 
 
