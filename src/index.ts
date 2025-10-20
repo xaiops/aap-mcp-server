@@ -5,21 +5,21 @@ import { config } from "dotenv";
 import express from "express";
 import cors from "cors";
 import { randomUUID } from "node:crypto";
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { Server } from "@modelcontextprotocol/sdk/server/index";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp";
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
   isInitializeRequest,
   Tool,
-} from "@modelcontextprotocol/sdk/types.js";
+} from "@modelcontextprotocol/sdk/types";
 import type { McpToolDefinition } from "openapi-mcp-generator";
 import { getToolsFromOpenApi } from "openapi-mcp-generator";
 import { readFileSync, writeFileSync, promises as fs } from "fs";
 import { join } from "path";
 import * as yaml from "js-yaml";
-import { ToolLogger, type LogEntry } from "./logger.js";
-import { renderDashboard, renderToolsList, type ToolWithSuccessRate } from "./views/index.js";
+import { ToolLogger, type LogEntry } from "./logger";
+import { renderDashboard, renderToolsList, renderToolDetails, renderCategoriesOverview, renderCategoryTools, renderLogs, renderServicesOverview, renderServiceTools, type ToolWithSuccessRate, type ToolDetailsData, type CategoryWithAccess, type CategoriesOverviewData, type CategoryToolsData, type LogsData, type ServicesOverviewData, type ServiceToolsData, type DashboardData } from "./views/index";
 
 // Load environment variables
 config();
@@ -220,6 +220,13 @@ const getUserCategory = (sessionId: string | undefined, categoryOverride?: strin
 // Filter tools based on category
 const filterToolsByCategory = (tools: ToolWithSize[], category: Category): ToolWithSize[] => {
   return tools.filter(tool => category.includes(tool.name));
+};
+
+// Generate dynamic color for category based on name
+const getCategoryColor = (categoryName: string): string => {
+  const colors = ['#6c757d', '#28a745', '#dc3545', '#17a2b8', '#007acc', '#ff9800', '#9c27b0', '#4caf50'];
+  const hash = categoryName.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  return colors[hash % colors.length];
 };
 
 // Load OpenAPI specifications from HTTP URLs with local fallback
@@ -781,324 +788,38 @@ const mcpDeleteHandler = async (req: express.Request, res: express.Response, cat
 if (enableUI) {
   // Tool list HTML endpoint
   app.get('/tools', async (req, res) => {
-  try {
-    // Calculate success rates for all tools
-    const toolsWithSuccessRates = await Promise.all(allTools.map(async (tool) => {
-      const logEntries = await getToolLogEntries(tool.name);
-      let successRate = 'N/A';
+    try {
+      // Calculate success rates for all tools
+      const toolsWithSuccessRates: ToolWithSuccessRate[] = await Promise.all(allTools.map(async (tool) => {
+        const logEntries = await getToolLogEntries(tool.name);
+        let successRate = 'N/A';
 
-      if (logEntries.length > 0) {
-        const successCount = logEntries.filter(entry => entry.return_code >= 200 && entry.return_code < 300).length;
-        const successPercentage = (successCount / logEntries.length) * 100;
-        successRate = `${successPercentage.toFixed(1)}%`;
-      }
+        if (logEntries.length > 0) {
+          const successCount = logEntries.filter(entry => entry.return_code >= 200 && entry.return_code < 300).length;
+          const successPercentage = (successCount / logEntries.length) * 100;
+          successRate = `${successPercentage.toFixed(1)}%`;
+        }
 
-      return {
-        ...tool,
-        successRate,
-        logCount: logEntries.length
-      };
-    }));
+        return {
+          ...tool,
+          successRate,
+          logCount: logEntries.length
+        };
+      }));
 
-    const toolRows = toolsWithSuccessRates.map(tool => `
-      <tr data-name="${tool.name}" data-size="${tool.size}" data-service="${tool.service || 'unknown'}" data-success-rate="${tool.successRate === 'N/A' ? -1 : parseFloat(tool.successRate)}">
-        <td><a href="/tools/${encodeURIComponent(tool.name)}" style="color: #007acc; text-decoration: none;">${tool.name}</a></td>
-        <td>${tool.size}</td>
-        <td><span class="service-${tool.service || 'unknown'}">${tool.service || 'unknown'}</span></td>
-        <td><span class="success-rate ${tool.successRate === 'N/A' ? 'no-data' : (parseFloat(tool.successRate) >= 90 ? 'excellent' : parseFloat(tool.successRate) >= 70 ? 'good' : 'poor')}">${tool.successRate}</span></td>
-      </tr>
-    `).join('');
+      // Use the view function to render the HTML
+      const htmlContent = renderToolsList({ tools: toolsWithSuccessRates });
 
-    const htmlContent = `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AAP MCP Tools List</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-            background-color: #f5f5f5;
-        }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            background-color: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        h1 {
-            color: #333;
-            border-bottom: 2px solid #007acc;
-            padding-bottom: 10px;
-        }
-        .stats {
-            background-color: #f8f9fa;
-            padding: 15px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 10px;
-        }
-        th, td {
-            border: 1px solid #ddd;
-            padding: 8px;
-            text-align: left;
-        }
-        th {
-            background-color: #007acc;
-            color: white;
-            font-weight: bold;
-        }
-        tr:nth-child(even) {
-            background-color: #f2f2f2;
-        }
-        tr:hover {
-            background-color: #e6f3ff;
-        }
-        code {
-            background-color: #f4f4f4;
-            padding: 2px 4px;
-            border-radius: 3px;
-            font-family: monospace;
-        }
-        .service-eda { background-color: #e3f2fd; padding: 3px 6px; border-radius: 3px; }
-        .service-controller { background-color: #f3e5f5; padding: 3px 6px; border-radius: 3px; }
-        .service-gateway { background-color: #e8f5e8; padding: 3px 6px; border-radius: 3px; }
-        .service-galaxy { background-color: #fff3e0; padding: 3px 6px; border-radius: 3px; }
-        .service-unknown { background-color: #ffebee; padding: 3px 6px; border-radius: 3px; }
-        .service-operator { background-color: #e1f5fe; padding: 3px 6px; border-radius: 3px; }
-        .actions {
-            margin-bottom: 20px;
-        }
-        .btn {
-            background-color: #007acc;
-            color: white;
-            padding: 8px 16px;
-            text-decoration: none;
-            border-radius: 4px;
-            margin-right: 10px;
-        }
-        .btn:hover {
-            background-color: #005a9e;
-        }
-        .success-rate {
-            font-weight: bold;
-            padding: 4px 8px;
-            border-radius: 4px;
-            display: inline-block;
-        }
-        .success-rate.excellent {
-            background-color: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-        .success-rate.good {
-            background-color: #fff3cd;
-            color: #856404;
-            border: 1px solid #ffeaa7;
-        }
-        .success-rate.poor {
-            background-color: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-        .success-rate.no-data {
-            background-color: #e2e3e5;
-            color: #6c757d;
-            border: 1px solid #ced4da;
-        }
-        .sortable {
-            cursor: pointer;
-            user-select: none;
-            position: relative;
-        }
-        .sortable:hover {
-            background-color: #f8f9fa;
-        }
-        .sort-indicator {
-            margin-left: 5px;
-            color: #6c757d;
-            font-size: 0.8em;
-        }
-        .sortable.asc .sort-indicator {
-            color: #007acc;
-        }
-        .sortable.asc .sort-indicator::after {
-            content: ' ↑';
-        }
-        .sortable.desc .sort-indicator {
-            color: #007acc;
-        }
-        .sortable.desc .sort-indicator::after {
-            content: ' ↓';
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>AAP MCP Tools List</h1>
-
-        <div class="stats">
-            <strong>Total Tools:</strong> ${allTools.length}<br>
-            <strong>Total Size:</strong> ${allTools.reduce((sum, tool) => sum + (tool.size || 0), 0).toLocaleString()} characters
-        </div>
-
-        <div class="actions">
-            <a href="/export/tools/csv" class="btn">Download CSV</a>
-        </div>
-
-        <table>
-            <thead>
-                <tr>
-                    <th class="sortable" data-column="name">
-                        Tool Name <span class="sort-indicator">⇅</span>
-                    </th>
-                    <th class="sortable" data-column="size">
-                        Size (chars) <span class="sort-indicator">⇅</span>
-                    </th>
-                    <th class="sortable" data-column="service">
-                        Service <span class="sort-indicator">⇅</span>
-                    </th>
-                    <th class="sortable" data-column="successRate">
-                        Success Rate <span class="sort-indicator">⇅</span>
-                    </th>
-                </tr>
-            </thead>
-            <tbody>
-                ${toolRows}
-            </tbody>
-        </table>
-    </div>
-
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const table = document.querySelector('table tbody');
-            const headers = document.querySelectorAll('th.sortable');
-            let currentSort = { column: null, direction: 'asc' };
-
-            // Read URL parameters on page load
-            function readUrlParams() {
-                const urlParams = new URLSearchParams(window.location.search);
-                const sortBy = urlParams.get('sort_by');
-                const sortOrder = urlParams.get('sort_order');
-
-                if (sortBy && ['name', 'size', 'service', 'successRate'].includes(sortBy)) {
-                    currentSort.column = sortBy;
-                    currentSort.direction = sortOrder === 'desc' ? 'desc' : 'asc';
-
-                    // Apply the sorting
-                    sortTable(currentSort.column, currentSort.direction);
-
-                    // Update header indicators
-                    headers.forEach(h => {
-                        h.classList.remove('asc', 'desc');
-                        if (h.dataset.column === currentSort.column) {
-                            h.classList.add(currentSort.direction);
-                        }
-                    });
-                }
-            }
-
-            // Update URL with current sort parameters
-            function updateUrl(column, direction) {
-                const url = new URL(window.location);
-                url.searchParams.set('sort_by', column);
-                url.searchParams.set('sort_order', direction);
-                window.history.replaceState({}, '', url);
-            }
-
-            headers.forEach(header => {
-                header.addEventListener('click', function() {
-                    const column = this.dataset.column;
-
-                    // Toggle direction if clicking the same column
-                    if (currentSort.column === column) {
-                        currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
-                    } else {
-                        currentSort.direction = 'asc';
-                    }
-                    currentSort.column = column;
-
-                    // Update header indicators
-                    headers.forEach(h => {
-                        h.classList.remove('asc', 'desc');
-                    });
-                    this.classList.add(currentSort.direction);
-
-                    // Sort the table
-                    sortTable(column, currentSort.direction);
-
-                    // Update URL
-                    updateUrl(column, currentSort.direction);
-                });
-            });
-
-            function sortTable(column, direction) {
-                const rows = Array.from(table.querySelectorAll('tr'));
-
-                rows.sort((a, b) => {
-                    let aVal, bVal;
-
-                    switch(column) {
-                        case 'name':
-                            aVal = a.dataset.name.toLowerCase();
-                            bVal = b.dataset.name.toLowerCase();
-                            break;
-                        case 'size':
-                            aVal = parseInt(a.dataset.size) || 0;
-                            bVal = parseInt(b.dataset.size) || 0;
-                            break;
-                        case 'service':
-                            aVal = a.dataset.service.toLowerCase();
-                            bVal = b.dataset.service.toLowerCase();
-                            break;
-                        case 'successRate':
-                            aVal = parseFloat(a.dataset.successRate) || -1;
-                            bVal = parseFloat(b.dataset.successRate) || -1;
-                            break;
-                        default:
-                            return 0;
-                    }
-
-                    if (column === 'size' || column === 'successRate') {
-                        // Numeric sorting
-                        return direction === 'asc' ? aVal - bVal : bVal - aVal;
-                    } else {
-                        // String sorting
-                        if (aVal < bVal) return direction === 'asc' ? -1 : 1;
-                        if (aVal > bVal) return direction === 'asc' ? 1 : -1;
-                        return 0;
-                    }
-                });
-
-                // Reorder the table rows
-                rows.forEach(row => table.appendChild(row));
-            }
-
-            // Initialize sorting from URL parameters
-            readUrlParams();
-        });
-    </script>
-</body>
-</html>`;
-
-    res.setHeader('Content-Type', 'text/html');
-    res.send(htmlContent);
-  } catch (error) {
-    console.error('Error generating HTML tool list:', error);
-    res.status(500).json({
-      error: 'Failed to generate tool list HTML',
-      message: error instanceof Error ? error.message : String(error)
-    });
-  }
-});
+      res.setHeader('Content-Type', 'text/html');
+      res.send(htmlContent);
+    } catch (error) {
+      console.error('Error generating HTML tool list:', error);
+      res.status(500).json({
+        error: 'Failed to generate tool list HTML',
+        message: error instanceof Error ? error.message : String(error)
+      });
+    }
+  });
 
 // Individual tool details endpoint
 app.get('/tools/:name', async (req, res) => {
@@ -1137,529 +858,29 @@ app.get('/tools/:name', async (req, res) => {
     }, { success: 0, error: 0 });
 
     // Check which categories have access to this tool
-    const categoriesWithAccess = [];
-    const categoryColors: Record<string, string> = {
-      'anonymous': '#6c757d',
-      'user': '#28a745',
-      'admin': '#dc3545',
-      'operator': '#17a2b8'
-    };
-
+    const categoriesWithAccess: CategoryWithAccess[] = [];
     for (const [categoryName, categoryTools] of Object.entries(allCategories)) {
       if (categoryTools.includes(toolName)) {
         categoriesWithAccess.push({
           name: categoryName,
           displayName: categoryName.charAt(0).toUpperCase() + categoryName.slice(1),
-          color: categoryColors[categoryName] || '#6c757d'
+          color: getCategoryColor(categoryName)
         });
       }
     }
 
-    // Helper function to format timestamp for display
-    const formatTimestamp = (timestamp: string) => {
-      return new Date(timestamp).toLocaleString();
+    // Prepare data for the view
+    const toolDetailsData: ToolDetailsData = {
+      tool,
+      logEntries,
+      last10Calls,
+      errorCodeSummary,
+      chartData,
+      categoriesWithAccess
     };
 
-    // Helper function to get status color
-    const getStatusColor = (code: number) => {
-      if (code >= 200 && code < 300) return '#28a745'; // green
-      if (code >= 300 && code < 400) return '#ffc107'; // yellow
-      if (code >= 400 && code < 500) return '#fd7e14'; // orange
-      if (code >= 500) return '#dc3545'; // red
-      return '#6c757d'; // gray
-    };
-
-    // Helper function to get status text
-    const getStatusText = (code: number) => {
-      if (code >= 200 && code < 300) return 'Success';
-      if (code >= 300 && code < 400) return 'Redirect';
-      if (code >= 400 && code < 500) return 'Client Error';
-      if (code >= 500) return 'Server Error';
-      return 'Unknown';
-    };
-
-    // Format the input schema for display
-    const formatSchema = (schema: any, level = 0) => {
-      if (!schema) return 'No schema defined';
-
-      const indent = '  '.repeat(level);
-      let result = '';
-
-      if (schema.type === 'object' && schema.properties) {
-        result += '{\n';
-        for (const [key, value] of Object.entries(schema.properties)) {
-          const prop = value as any;
-          const required = schema.required?.includes(key) ? ' (required)' : '';
-          result += `${indent}  "${key}"${required}: `;
-          if (prop.type === 'object') {
-            result += formatSchema(prop, level + 1);
-          } else {
-            result += `${prop.type || 'any'}`;
-            if (prop.description) result += ` // ${prop.description}`;
-          }
-          result += '\n';
-        }
-        result += `${indent}}`;
-      } else {
-        result = JSON.stringify(schema, null, 2);
-      }
-
-      return result;
-    };
-
-    const htmlContent = `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${tool.name} - Tool Details</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-            background-color: #f5f5f5;
-            line-height: 1.6;
-        }
-        .container {
-            max-width: 1000px;
-            margin: 0 auto;
-            background-color: white;
-            padding: 30px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        h1 {
-            color: #333;
-            border-bottom: 2px solid #007acc;
-            padding-bottom: 10px;
-            margin-bottom: 30px;
-        }
-        .tool-header {
-            display: flex;
-            align-items: center;
-            margin-bottom: 30px;
-        }
-        .service-badge {
-            background-color: #007acc;
-            color: white;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 0.9em;
-            margin-left: 15px;
-        }
-        .service-eda { background-color: #2196f3; }
-        .service-controller { background-color: #9c27b0; }
-        .service-gateway { background-color: #4caf50; }
-        .service-galaxy { background-color: #ff9800; }
-        .service-unknown { background-color: #f44336; }
-        .navigation {
-            margin-bottom: 30px;
-        }
-        .nav-link {
-            background-color: #6c757d;
-            color: white;
-            padding: 8px 16px;
-            text-decoration: none;
-            border-radius: 4px;
-            margin-right: 10px;
-        }
-        .nav-link:hover {
-            background-color: #5a6268;
-        }
-        .info-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-        .info-card {
-            background-color: #f8f9fa;
-            padding: 20px;
-            border-radius: 8px;
-            border-left: 4px solid #007acc;
-        }
-        .info-card h3 {
-            margin-top: 0;
-            color: #333;
-            font-size: 1.1em;
-        }
-        .info-value {
-            font-family: monospace;
-            background-color: #e9ecef;
-            padding: 8px;
-            border-radius: 4px;
-            word-break: break-all;
-        }
-        .description-section {
-            background-color: #e3f2fd;
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 30px;
-        }
-        .description-section h2 {
-            margin-top: 0;
-            color: #1976d2;
-        }
-        .schema-section {
-            background-color: #f5f5f5;
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 30px;
-        }
-        .schema-section h2 {
-            margin-top: 0;
-            color: #333;
-        }
-        .schema-code {
-            background-color: #2d3748;
-            color: #e2e8f0;
-            padding: 20px;
-            border-radius: 8px;
-            overflow-x: auto;
-            font-family: 'Courier New', monospace;
-            white-space: pre;
-            font-size: 0.9em;
-        }
-        .categories-section {
-            background-color: #f0f9ff;
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 30px;
-        }
-        .categories-section h2 {
-            margin-top: 0;
-            color: #0369a1;
-        }
-        .category-badges {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-        }
-        .category-badge {
-            padding: 8px 16px;
-            border-radius: 20px;
-            color: white;
-            text-decoration: none;
-            font-weight: bold;
-            transition: opacity 0.3s ease;
-        }
-        .category-badge:hover {
-            opacity: 0.8;
-            text-decoration: none;
-            color: white;
-        }
-        .no-categories {
-            color: #6c757d;
-            font-style: italic;
-        }
-        .method-badge {
-            display: inline-block;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 0.8em;
-            font-weight: bold;
-            text-transform: uppercase;
-        }
-        .method-get { background-color: #28a745; color: white; }
-        .method-post { background-color: #007bff; color: white; }
-        .method-put { background-color: #ffc107; color: black; }
-        .method-patch { background-color: #6f42c1; color: white; }
-        .method-delete { background-color: #dc3545; color: white; }
-        .stats-grid {
-            display: grid;
-            grid-template-columns: 1fr;
-            gap: 20px;
-            margin-top: 15px;
-        }
-        .chart-container {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            gap: 30px;
-            margin-bottom: 20px;
-        }
-        .chart-wrapper {
-            flex: 0 0 300px;
-            height: 300px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-        .chart-title {
-            font-size: 1.1em;
-            font-weight: bold;
-            margin-bottom: 15px;
-            color: #333;
-        }
-        .chart-canvas {
-            width: 250px !important;
-            height: 250px !important;
-        }
-        .stats-details {
-            flex: 1;
-        }
-        .stat-card {
-            background-color: #f8f9fa;
-            padding: 20px;
-            border-radius: 8px;
-            border: 1px solid #e9ecef;
-        }
-        .stat-card h4 {
-            margin-top: 0;
-            color: #495057;
-        }
-        .code-summary {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-        .code-entry {
-            display: flex;
-            align-items: center;
-            padding: 8px 12px;
-            background-color: white;
-            border-radius: 4px;
-            gap: 10px;
-        }
-        .code-number {
-            font-weight: bold;
-            font-family: monospace;
-            min-width: 40px;
-        }
-        .code-text {
-            flex: 1;
-            color: #6c757d;
-        }
-        .code-count {
-            font-size: 0.9em;
-            color: #495057;
-        }
-        .calls-list {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
-        .call-entry {
-            border: 1px solid #e9ecef;
-            border-radius: 8px;
-            padding: 15px;
-            background-color: white;
-        }
-        .call-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 8px;
-        }
-        .call-timestamp {
-            font-size: 0.9em;
-            color: #6c757d;
-        }
-        .call-status {
-            color: white;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 0.8em;
-            font-weight: bold;
-        }
-        .call-endpoint {
-            font-family: monospace;
-            background-color: #f8f9fa;
-            padding: 8px;
-            border-radius: 4px;
-            word-break: break-all;
-            font-size: 0.9em;
-        }
-        .call-error {
-            margin-top: 8px;
-            padding: 8px;
-            background-color: #f8d7da;
-            color: #721c24;
-            border-radius: 4px;
-            font-size: 0.9em;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="navigation">
-            <a href="/tools" class="nav-link">← All Tools</a>
-            <a href="/category" class="nav-link">Categories</a>
-            <a href="/export/tools/csv" class="nav-link">Download CSV</a>
-        </div>
-
-        <div class="tool-header">
-            <h1>${tool.name}</h1>
-            <span class="service-badge service-${tool.service || 'unknown'}">${tool.service || 'unknown'}</span>
-        </div>
-
-        <div class="schema-section">
-            <h2>Usage Statistics</h2>
-            ${logEntries.length > 0 ? `
-            <p><strong>Total Calls:</strong> ${logEntries.length}</p>
-            <div class="chart-container">
-                <div class="chart-wrapper">
-                    <div class="chart-title">Success vs Error Rate</div>
-                    <canvas id="statusChart" class="chart-canvas"></canvas>
-                </div>
-                <div class="stats-details">
-                    <div class="stats-grid">
-                        <div class="stat-card">
-                            <h4>Response Codes</h4>
-                            <div class="code-summary">
-                                ${Object.entries(errorCodeSummary).map(([code, count]) => `
-                                <div class="code-entry" style="border-left: 4px solid ${getStatusColor(Number(code))};">
-                                    <span class="code-number">${code}</span>
-                                    <span class="code-text">${getStatusText(Number(code))}</span>
-                                    <span class="code-count">${count} calls</span>
-                                </div>
-                                `).join('')}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            ` : '<p><em>No usage data available</em></p>'}
-        </div>
-
-        ${last10Calls.length > 0 ? `
-        <div class="schema-section">
-            <h2>Recent Calls (Last 10)</h2>
-            <div class="calls-list">
-                ${last10Calls.map(entry => `
-                <div class="call-entry">
-                    <div class="call-header">
-                        <span class="call-timestamp">${formatTimestamp(entry.timestamp)}</span>
-                        <span class="call-status" style="background-color: ${getStatusColor(entry.return_code)};">
-                            ${entry.return_code} ${getStatusText(entry.return_code)}
-                        </span>
-                    </div>
-                    <div class="call-endpoint">${entry.endpoint}</div>
-                    ${entry.response && typeof entry.response === 'object' && entry.response.error ? `
-                    <div class="call-error">Error: ${entry.response.error}</div>
-                    ` : ''}
-                </div>
-                `).join('')}
-            </div>
-        </div>
-        ` : ''}
-
-        ${tool.description ? `
-        <div class="description-section">
-            <h2>Description</h2>
-            <p>${tool.description}</p>
-        </div>
-        ` : ''}
-
-        <div class="info-grid">
-            <div class="info-card">
-                <h3>HTTP Method</h3>
-                <div>
-                    <span class="method-badge method-${tool.method.toLowerCase()}">${tool.method.toUpperCase()}</span>
-                </div>
-            </div>
-
-            <div class="info-card">
-                <h3>Path Template</h3>
-                <div class="info-value">${tool.pathTemplate}</div>
-            </div>
-
-            <div class="info-card">
-                <h3>Tool Size</h3>
-                <div class="info-value">${tool.size.toLocaleString()} characters</div>
-            </div>
-
-            <div class="info-card">
-                <h3>Service</h3>
-                <div class="info-value">${tool.service || 'unknown'}</div>
-            </div>
-        </div>
-
-        <div class="categories-section">
-            <h2>Available to Categories</h2>
-            ${categoriesWithAccess.length > 0 ? `
-            <div class="category-badges">
-                ${categoriesWithAccess.map(category => `
-                <a href="/category/${category.name}" class="category-badge" style="background-color: ${category.color};">
-                    ${category.displayName}
-                </a>
-                `).join('')}
-            </div>
-            ` : '<p class="no-categories">This tool is not available to any category.</p>'}
-        </div>
-
-        ${tool.inputSchema ? `
-        <div class="schema-section">
-            <h2>Input Schema</h2>
-            <div class="schema-code">${formatSchema(tool.inputSchema)}</div>
-        </div>
-        ` : ''}
-
-        ${tool.parameters && tool.parameters.length > 0 ? `
-        <div class="schema-section">
-            <h2>Parameters</h2>
-            <div class="schema-code">${JSON.stringify(tool.parameters, null, 2)}</div>
-        </div>
-        ` : ''}
-    </div>
-
-    ${logEntries.length > 0 ? `
-    <script>
-        // Create pie chart for success vs error distribution
-        const ctx = document.getElementById('statusChart').getContext('2d');
-        const chartData = {
-            labels: ['Success (2xx)', 'Errors (non-2xx)'],
-            datasets: [{
-                data: [${chartData.success}, ${chartData.error}],
-                backgroundColor: [
-                    '#28a745', // Green for success
-                    '#dc3545'  // Red for errors
-                ],
-                borderColor: [
-                    '#1e7e34',
-                    '#c82333'
-                ],
-                borderWidth: 2
-            }]
-        };
-
-        const config = {
-            type: 'pie',
-            data: chartData,
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        position: 'bottom',
-                        labels: {
-                            padding: 20,
-                            usePointStyle: true,
-                            font: {
-                                size: 12
-                            }
-                        }
-                    },
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                                const percentage = ((context.parsed / total) * 100).toFixed(1);
-                                return context.label + ': ' + context.parsed + ' (' + percentage + '%)';
-                            }
-                        }
-                    }
-                }
-            }
-        };
-
-        new Chart(ctx, config);
-    </script>
-    ` : ''}
-</body>
-</html>`;
+    // Use the view function to render the HTML
+    const htmlContent = renderToolDetails(toolDetailsData);
 
     res.setHeader('Content-Type', 'text/html');
     res.send(htmlContent);
@@ -1697,33 +918,15 @@ app.get('/export/tools/csv', (req, res) => {
 // Category overview endpoint
 app.get('/category', (req, res) => {
   try {
-    // Define category descriptions and colors
-    const categoryConfig: Record<string, { description: string; color: string }> = {
-      'anonymous': {
-        description: 'Users without authentication - limited or no tool access',
-        color: '#6c757d'
-      },
-      'user': {
-        description: 'Regular authenticated users with read-only access to most tools',
-        color: '#28a745'
-      },
-      'admin': {
-        description: 'Administrators with full access to all tools including user management',
-        color: '#dc3545'
-      },
-      'operator': {
-        description: 'Operators with access to operational and monitoring tools',
-        color: '#17a2b8'
-      }
-    };
-
     // Calculate stats for each category
     const categories = Object.entries(allCategories).map(([categoryName, categoryTools]) => ({
       name: categoryName,
       displayName: categoryName.charAt(0).toUpperCase() + categoryName.slice(1),
-      description: categoryConfig[categoryName]?.description || `${categoryName.charAt(0).toUpperCase() + categoryName.slice(1)} category with specific tool access`,
+      description: `${categoryName.charAt(0).toUpperCase() + categoryName.slice(1)} category with specific tool access`,
       tools: filterToolsByCategory(allTools, categoryTools),
-      color: categoryConfig[categoryName]?.color || '#6c757d'
+      color: getCategoryColor(categoryName),
+      toolCount: 0, // Will be calculated below
+      totalSize: 0   // Will be calculated below
     }));
 
     // Calculate sizes and add to category data
@@ -1733,204 +936,14 @@ app.get('/category', (req, res) => {
       totalSize: category.tools.reduce((sum, tool) => sum + (tool.size || 0), 0)
     }));
 
-    const htmlContent = `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Categories Overview - AAP MCP</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-            background-color: #f5f5f5;
-        }
-        .container {
-            max-width: 1000px;
-            margin: 0 auto;
-            background-color: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        h1 {
-            color: #333;
-            border-bottom: 2px solid #007acc;
-            padding-bottom: 10px;
-            margin-bottom: 30px;
-        }
-        .navigation {
-            margin-bottom: 30px;
-        }
-        .nav-link {
-            background-color: #6c757d;
-            color: white;
-            padding: 6px 12px;
-            text-decoration: none;
-            border-radius: 4px;
-            margin-right: 10px;
-            font-size: 0.9em;
-        }
-        .nav-link:hover {
-            background-color: #5a6268;
-        }
-        .category-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-        .category-card {
-            border: 2px solid #e9ecef;
-            border-radius: 8px;
-            padding: 20px;
-            text-decoration: none;
-            color: inherit;
-            transition: all 0.3s ease;
-            cursor: pointer;
-        }
-        .category-card:hover {
-            border-color: #007acc;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-            transform: translateY(-2px);
-            text-decoration: none;
-            color: inherit;
-        }
-        .category-header {
-            display: flex;
-            align-items: center;
-            margin-bottom: 15px;
-        }
-        .category-icon {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-weight: bold;
-            margin-right: 15px;
-            font-size: 1.2em;
-        }
-        .category-title {
-            font-size: 1.3em;
-            font-weight: bold;
-            margin: 0;
-        }
-        .category-description {
-            color: #6c757d;
-            margin-bottom: 15px;
-            line-height: 1.4;
-        }
-        .category-stats {
-            display: flex;
-            justify-content: space-between;
-            background-color: #f8f9fa;
-            padding: 10px;
-            border-radius: 5px;
-        }
-        .stat {
-            text-align: center;
-        }
-        .stat-number {
-            font-size: 1.5em;
-            font-weight: bold;
-            color: #333;
-        }
-        .stat-label {
-            font-size: 0.8em;
-            color: #6c757d;
-            text-transform: uppercase;
-        }
-        .summary {
-            background-color: #e3f2fd;
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 30px;
-        }
-        .summary h2 {
-            margin-top: 0;
-            color: #1976d2;
-        }
-        .summary-stats {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 20px;
-            margin-top: 15px;
-        }
-        .summary-stat {
-            text-align: center;
-            background-color: white;
-            padding: 15px;
-            border-radius: 5px;
-        }
-        .summary-stat-number {
-            font-size: 1.8em;
-            font-weight: bold;
-            color: #1976d2;
-        }
-        .summary-stat-label {
-            font-size: 0.9em;
-            color: #666;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>Categories Overview</h1>
+    // Prepare data for the view
+    const categoriesOverviewData: CategoriesOverviewData = {
+      categories: categoryStats,
+      allTools
+    };
 
-        <div class="navigation">
-            <a href="/tools" class="nav-link">All Tools</a>
-            <a href="/export/tools/csv" class="nav-link">Download CSV</a>
-        </div>
-
-        <div class="summary">
-            <h2>System Summary</h2>
-            <p>The AAP MCP system uses categories to control tool access based on user permissions. Each category provides a different level of access to the available tools.</p>
-            <div class="summary-stats">
-                <div class="summary-stat">
-                    <div class="summary-stat-number">${allTools.length}</div>
-                    <div class="summary-stat-label">Total Tools</div>
-                </div>
-                <div class="summary-stat">
-                    <div class="summary-stat-number">${categories.length}</div>
-                    <div class="summary-stat-label">Categories</div>
-                </div>
-                <div class="summary-stat">
-                    <div class="summary-stat-number">${allTools.reduce((sum, tool) => sum + (tool.size || 0), 0).toLocaleString()}</div>
-                    <div class="summary-stat-label">Total Characters</div>
-                </div>
-            </div>
-        </div>
-
-        <div class="category-grid">
-            ${categoryStats.map(category => `
-            <a href="/category/${category.name}" class="category-card">
-                <div class="category-header">
-                    <div class="category-icon" style="background-color: ${category.color};">
-                        ${category.displayName.charAt(0)}
-                    </div>
-                    <h3 class="category-title">${category.displayName}</h3>
-                </div>
-                <p class="category-description">${category.description}</p>
-                <div class="category-stats">
-                    <div class="stat">
-                        <div class="stat-number">${category.toolCount}</div>
-                        <div class="stat-label">Tools</div>
-                    </div>
-                    <div class="stat">
-                        <div class="stat-number">${category.totalSize.toLocaleString()}</div>
-                        <div class="stat-label">Characters</div>
-                    </div>
-                </div>
-            </a>
-            `).join('')}
-        </div>
-    </div>
-</body>
-</html>`;
+    // Use the view function to render the HTML
+    const htmlContent = renderCategoriesOverview(categoriesOverviewData);
 
     res.setHeader('Content-Type', 'text/html');
     res.send(htmlContent);
@@ -1966,175 +979,17 @@ app.get('/category/:name', (req, res) => {
     // Calculate total size
     const totalSize = filteredTools.reduce((sum, tool) => sum + (tool.size || 0), 0);
 
-    // Generate HTML response
-    const toolRows = filteredTools.map(tool => `
-      <tr>
-        <td><a href="/tools/${encodeURIComponent(tool.name)}" style="color: #007acc; text-decoration: none;">${tool.name}</a></td>
-        <td>${tool.size}</td>
-        <td>${tool.description || ''}</td>
-        <td><code>${tool.pathTemplate}</code></td>
-        <td><span class="service-${tool.service || 'unknown'}">${tool.service || 'unknown'}</span></td>
-      </tr>
-    `).join('');
+    // Prepare data for the view
+    const categoryToolsData: CategoryToolsData = {
+      categoryName,
+      displayName,
+      filteredTools,
+      totalSize,
+      allCategories
+    };
 
-    const htmlContent = `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${displayName} Category Tools - AAP MCP</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-            background-color: #f5f5f5;
-        }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            background-color: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        h1 {
-            color: #333;
-            border-bottom: 2px solid #007acc;
-            padding-bottom: 10px;
-        }
-        .category-badge {
-            display: inline-block;
-            background-color: #007acc;
-            color: white;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 0.9em;
-            margin-left: 10px;
-        }
-        .stats {
-            background-color: #f8f9fa;
-            padding: 15px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-        }
-        .navigation {
-            margin-bottom: 20px;
-        }
-        .nav-link {
-            background-color: #6c757d;
-            color: white;
-            padding: 6px 12px;
-            text-decoration: none;
-            border-radius: 4px;
-            margin-right: 10px;
-            font-size: 0.9em;
-        }
-        .nav-link:hover {
-            background-color: #5a6268;
-        }
-        .nav-link.active {
-            background-color: #007acc;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 10px;
-        }
-        th, td {
-            border: 1px solid #ddd;
-            padding: 8px;
-            text-align: left;
-        }
-        th {
-            background-color: #007acc;
-            color: white;
-            font-weight: bold;
-        }
-        tr:nth-child(even) {
-            background-color: #f2f2f2;
-        }
-        tr:hover {
-            background-color: #e6f3ff;
-        }
-        code {
-            background-color: #f4f4f4;
-            padding: 2px 4px;
-            border-radius: 3px;
-            font-family: monospace;
-        }
-        .service-eda { background-color: #e3f2fd; padding: 3px 6px; border-radius: 3px; }
-        .service-controller { background-color: #f3e5f5; padding: 3px 6px; border-radius: 3px; }
-        .service-gateway { background-color: #e8f5e8; padding: 3px 6px; border-radius: 3px; }
-        .service-galaxy { background-color: #fff3e0; padding: 3px 6px; border-radius: 3px; }
-        .service-unknown { background-color: #ffebee; padding: 3px 6px; border-radius: 3px; }
-        .service-operator { background-color: #e1f5fe; padding: 3px 6px; border-radius: 3px; }
-        .actions {
-            margin-bottom: 20px;
-        }
-        .btn {
-            background-color: #007acc;
-            color: white;
-            padding: 8px 16px;
-            text-decoration: none;
-            border-radius: 4px;
-            margin-right: 10px;
-        }
-        .btn:hover {
-            background-color: #005a9e;
-        }
-        .empty-state {
-            text-align: center;
-            color: #6c757d;
-            padding: 40px;
-            font-style: italic;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>${displayName} Category Tools<span class="category-badge">${filteredTools.length} tools</span></h1>
-
-        <div class="navigation">
-            ${Object.keys(allCategories).map(name => `
-            <a href="/category/${name}" class="nav-link ${categoryName === name ? 'active' : ''}">${name.charAt(0).toUpperCase() + name.slice(1)}</a>
-            `).join('')}
-            <a href="/tools" class="nav-link">All Tools</a>
-        </div>
-
-        <div class="stats">
-            <strong>Category:</strong> ${displayName}<br>
-            <strong>Available Tools:</strong> ${filteredTools.length}<br>
-            <strong>Total Size:</strong> ${totalSize.toLocaleString()} characters
-        </div>
-
-        ${filteredTools.length === 0 ? `
-        <div class="empty-state">
-            <p>No tools are available for the ${displayName} category.</p>
-        </div>
-        ` : `
-        <div class="actions">
-            <a href="/export/tools/csv" class="btn">Download All Tools CSV</a>
-        </div>
-
-        <table>
-            <thead>
-                <tr>
-                    <th>Tool Name</th>
-                    <th>Size (chars)</th>
-                    <th>Description</th>
-                    <th>Path Template</th>
-                    <th>Service</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${toolRows}
-            </tbody>
-        </table>
-        `}
-    </div>
-</body>
-</html>`;
+    // Use the view function to render the HTML
+    const htmlContent = renderCategoryTools(categoryToolsData);
 
     res.setHeader('Content-Type', 'text/html');
     res.send(htmlContent);
@@ -2176,30 +1031,7 @@ app.get('/logs', async (req, res) => {
       lastEntries = lastEntries.filter(entry => entry.toolName === toolFilter);
     }
 
-    // Helper function to format timestamp for display
-    const formatTimestamp = (timestamp: string) => {
-      return new Date(timestamp).toLocaleString();
-    };
-
-    // Helper function to get status color
-    const getStatusColor = (code: number) => {
-      if (code >= 200 && code < 300) return '#28a745'; // green
-      if (code >= 300 && code < 400) return '#ffc107'; // yellow
-      if (code >= 400 && code < 500) return '#fd7e14'; // orange
-      if (code >= 500) return '#dc3545'; // red
-      return '#6c757d'; // gray
-    };
-
-    // Helper function to get status text
-    const getStatusText = (code: number) => {
-      if (code >= 200 && code < 300) return 'Success';
-      if (code >= 300 && code < 400) return 'Redirect';
-      if (code >= 400 && code < 500) return 'Client Error';
-      if (code >= 500) return 'Server Error';
-      return 'Unknown';
-    };
-
-    const totalRequests = allEntries.length; // Total after filtering
+    const totalRequests = allEntries.length;
     const statusCodeSummary = lastEntries.reduce((acc, entry) => {
       const code = entry.return_code;
       acc[code] = (acc[code] || 0) + 1;
@@ -2211,260 +1043,28 @@ app.get('/logs', async (req, res) => {
       return acc;
     }, {} as Record<string, number>);
 
-    const htmlContent = `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Request Logs - AAP MCP</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-            background-color: #f5f5f5;
-        }
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-            background-color: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        h1 {
-            color: #333;
-            border-bottom: 2px solid #007acc;
-            padding-bottom: 10px;
-            margin-bottom: 30px;
-        }
-        .navigation {
-            margin-bottom: 30px;
-        }
-        .nav-link {
-            background-color: #6c757d;
-            color: white;
-            padding: 6px 12px;
-            text-decoration: none;
-            border-radius: 4px;
-            margin-right: 10px;
-            font-size: 0.9em;
-        }
-        .nav-link:hover {
-            background-color: #5a6268;
-        }
-        .summary {
-            background-color: #e3f2fd;
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 30px;
-        }
-        .summary h2 {
-            margin-top: 0;
-            color: #1976d2;
-        }
-        .summary-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            margin-top: 15px;
-        }
-        .summary-card {
-            background-color: white;
-            padding: 15px;
-            border-radius: 5px;
-            border: 1px solid #e9ecef;
-        }
-        .summary-card h4 {
-            margin-top: 0;
-            color: #495057;
-        }
-        .logs-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 10px;
-            font-size: 0.9em;
-        }
-        .logs-table th, .logs-table td {
-            border: 1px solid #ddd;
-            padding: 8px;
-            text-align: left;
-        }
-        .logs-table th {
-            background-color: #007acc;
-            color: white;
-            font-weight: bold;
-            position: sticky;
-            top: 0;
-        }
-        .logs-table tr:nth-child(even) {
-            background-color: #f2f2f2;
-        }
-        .logs-table tr:hover {
-            background-color: #e6f3ff;
-        }
-        .status-badge {
-            color: white;
-            padding: 2px 6px;
-            border-radius: 3px;
-            font-size: 0.8em;
-            font-weight: bold;
-            min-width: 60px;
-            display: inline-block;
-            text-align: center;
-        }
-        .tool-link {
-            color: #007acc;
-            text-decoration: none;
-        }
-        .tool-link:hover {
-            text-decoration: underline;
-        }
-        .endpoint {
-            font-family: monospace;
-            font-size: 0.8em;
-            max-width: 300px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-        .user-agent {
-            font-size: 0.8em;
-            color: #6c757d;
-            max-width: 200px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-        .timestamp {
-            font-size: 0.8em;
-            white-space: nowrap;
-        }
-        .method-badge {
-            padding: 2px 4px;
-            border-radius: 2px;
-            font-size: 0.7em;
-            font-weight: bold;
-            text-transform: uppercase;
-            min-width: 45px;
-            display: inline-block;
-            text-align: center;
-        }
-        .method-get { background-color: #28a745; color: white; }
-        .method-post { background-color: #007bff; color: white; }
-        .method-put { background-color: #ffc107; color: black; }
-        .method-patch { background-color: #6f42c1; color: white; }
-        .method-delete { background-color: #dc3545; color: white; }
-        .code-summary, .tool-summary {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-        }
-        .code-entry, .tool-entry {
-            padding: 4px 8px;
-            background-color: #f8f9fa;
-            border-radius: 4px;
-            font-size: 0.8em;
-            border-left: 3px solid #6c757d;
-        }
-        .code-entry:hover, .tool-entry:hover {
-            background-color: #e9ecef;
-            cursor: pointer;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>Request Logs<span style="color: #6c757d; font-size: 0.7em; margin-left: 15px;">Last 1000 requests</span></h1>
+    // Transform log entries to match the view interface
+    const transformedEntries = lastEntries.map(entry => ({
+      timestamp: entry.timestamp,
+      toolName: entry.toolName,
+      return_code: entry.return_code,
+      endpoint: entry.endpoint,
+      payload: entry.payload,
+      userAgent: entry.payload?.userAgent || 'unknown'
+    }));
 
-        <div class="navigation">
-            <a href="/" class="nav-link">Dashboard</a>
-            <a href="/tools" class="nav-link">Tools</a>
-            <a href="/services" class="nav-link">Services</a>
-            <a href="/category" class="nav-link">Categories</a>
-        </div>
+    // Prepare data for the view
+    const logsData: LogsData = {
+      lastEntries: transformedEntries,
+      totalRequests,
+      statusCodeFilter,
+      toolFilter,
+      statusCodeSummary,
+      toolSummary
+    };
 
-        <div class="summary">
-            <h2>Log Summary</h2>
-            <p>Showing the last requests${(statusCodeFilter || toolFilter) ? ` out of ${lastEntries.length} filtered results` : ''} from ${totalRequests.toLocaleString()} total logged requests.${statusCodeFilter ? ` <strong>Filtered by status code: ${statusCodeFilter}</strong>` : ''}${toolFilter ? ` <strong>Filtered by tool: ${toolFilter}</strong>` : ''}</p>
-
-            ${statusCodeFilter ? `
-            <div style="margin: 20px 0; padding: 15px; background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 5px;">
-                <strong>Filtering by status code: ${statusCodeFilter}</strong>
-                <a href="/logs${toolFilter ? `?tool=${encodeURIComponent(toolFilter)}` : ''}" style="margin-left: 15px; padding: 5px 15px; background-color: #6c757d; color: white; text-decoration: none; border-radius: 4px;">Clear Status Filter</a>
-            </div>
-            ` : ''}
-
-            ${toolFilter ? `
-            <div style="margin: 20px 0; padding: 15px; background-color: #d1ecf1; border: 1px solid #bee5eb; border-radius: 5px;">
-                <strong>Filtering by tool: ${toolFilter}</strong>
-                <a href="/logs${statusCodeFilter ? `?status_code=${statusCodeFilter}` : ''}" style="margin-left: 15px; padding: 5px 15px; background-color: #6c757d; color: white; text-decoration: none; border-radius: 4px;">Clear Tool Filter</a>
-            </div>
-            ` : ''}
-
-            <div class="summary-grid">
-                <div class="summary-card">
-                    <h4>Status Codes</h4>
-                    <div class="code-summary">
-                        ${Object.entries(statusCodeSummary).map(([code, count]) => `
-                        <a href="/logs?status_code=${code}" class="code-entry" style="border-left-color: ${getStatusColor(Number(code))}; text-decoration: none; color: inherit; display: block; transition: background-color 0.2s ease;">
-                            ${code}: ${count}
-                        </a>
-                        `).join('')}
-                    </div>
-                </div>
-
-                <div class="summary-card">
-                    <h4>Most Used Tools</h4>
-                    <div class="tool-summary">
-                        ${Object.entries(toolSummary)
-                          .sort(([,a], [,b]) => b - a)
-                          .slice(0, 8)
-                          .map(([tool, count]) => `
-                        <a href="/logs?tool=${encodeURIComponent(tool)}" class="tool-entry" style="text-decoration: none; color: inherit; display: block; transition: background-color 0.2s ease;">
-                            ${tool}: ${count}
-                        </a>
-                        `).join('')}
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <table class="logs-table">
-            <thead>
-                <tr>
-                    <th>Timestamp</th>
-                    <th>Tool</th>
-                    <th>Method</th>
-                    <th>Status</th>
-                    <th>Endpoint</th>
-                    <th>User Agent</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${lastEntries.map(entry => `
-                <tr>
-                    <td class="timestamp">${formatTimestamp(entry.timestamp)}</td>
-                    <td>
-                        <a href="/tools/${encodeURIComponent(entry.toolName)}" class="tool-link">${entry.toolName}</a>
-                    </td>
-                    <td>
-                        <span class="method-badge method-${(entry.payload?.method || 'unknown').toLowerCase()}">${entry.payload?.method || 'N/A'}</span>
-                    </td>
-                    <td>
-                        <span class="status-badge" style="background-color: ${getStatusColor(entry.return_code)};">
-                            ${entry.return_code} ${getStatusText(entry.return_code)}
-                        </span>
-                    </td>
-                    <td class="endpoint" title="${entry.endpoint}">${entry.endpoint}</td>
-                    <td class="user-agent" title="${entry.payload?.userAgent || 'unknown'}">${entry.payload?.userAgent || 'unknown'}</td>
-                </tr>
-                `).join('')}
-            </tbody>
-        </table>
-    </div>
-</body>
-</html>`;
+    // Use the view function to render the HTML
+    const htmlContent = renderLogs(logsData);
 
     res.setHeader('Content-Type', 'text/html');
     res.send(htmlContent);
@@ -2481,226 +1081,32 @@ app.get('/logs', async (req, res) => {
 app.get('/services', (req, res) => {
   try {
     // Group tools by service
-    const serviceMap: Record<string, ToolWithSize[]> = {};
-
-    for (const tool of allTools) {
+    const serviceGroups = allTools.reduce((acc, tool) => {
       const service = tool.service || 'unknown';
-      if (!serviceMap[service]) {
-        serviceMap[service] = [];
+      if (!acc[service]) {
+        acc[service] = [];
       }
-      serviceMap[service].push(tool);
-    }
+      acc[service].push(tool);
+      return acc;
+    }, {} as Record<string, ToolWithSize[]>);
 
-    // Calculate service statistics
-    const services = Object.entries(serviceMap).map(([serviceName, tools]) => {
-      const totalSize = tools.reduce((sum, tool) => sum + (tool.size || 0), 0);
-      const methods = [...new Set(tools.map(tool => tool.method.toUpperCase()))];
+    // Prepare service data for the view
+    const services = Object.entries(serviceGroups).map(([serviceName, tools]) => ({
+      name: serviceName,
+      displayName: serviceName.charAt(0).toUpperCase() + serviceName.slice(1),
+      toolCount: tools.length,
+      totalSize: tools.reduce((sum, tool) => sum + (tool.size || 0), 0),
+      description: `${serviceName.charAt(0).toUpperCase() + serviceName.slice(1)} service providing ${tools.length} tools for automation and management tasks.`
+    }));
 
-      return {
-        name: serviceName,
-        displayName: serviceName.charAt(0).toUpperCase() + serviceName.slice(1),
-        toolCount: tools.length,
-        totalSize,
-        methods: methods.sort(),
-        tools
-      };
-    }).sort((a, b) => b.toolCount - a.toolCount); // Sort by tool count descending
-
-    const serviceColors: Record<string, string> = {
-      'eda': '#2196f3',
-      'controller': '#9c27b0',
-      'gateway': '#4caf50',
-      'galaxy': '#ff9800',
-      'unknown': '#f44336'
+    // Prepare data for the view
+    const servicesOverviewData: ServicesOverviewData = {
+      services,
+      allTools
     };
 
-    const htmlContent = `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Services Overview - AAP MCP</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-            background-color: #f5f5f5;
-        }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            background-color: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        h1 {
-            color: #333;
-            border-bottom: 2px solid #007acc;
-            padding-bottom: 10px;
-            margin-bottom: 30px;
-        }
-        .navigation {
-            margin-bottom: 30px;
-        }
-        .nav-link {
-            background-color: #6c757d;
-            color: white;
-            padding: 6px 12px;
-            text-decoration: none;
-            border-radius: 4px;
-            margin-right: 10px;
-            font-size: 0.9em;
-        }
-        .nav-link:hover {
-            background-color: #5a6268;
-        }
-        .services-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-        .service-card {
-            border: 2px solid #e9ecef;
-            border-radius: 8px;
-            padding: 20px;
-            text-decoration: none;
-            color: inherit;
-            transition: all 0.3s ease;
-            cursor: pointer;
-            background-color: white;
-        }
-        .service-card:hover {
-            border-color: #007acc;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-            transform: translateY(-2px);
-            text-decoration: none;
-            color: inherit;
-        }
-        .service-header {
-            display: flex;
-            align-items: center;
-            margin-bottom: 15px;
-        }
-        .service-icon {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-weight: bold;
-            margin-right: 15px;
-            font-size: 1.2em;
-        }
-        .service-title {
-            font-size: 1.3em;
-            font-weight: bold;
-            margin: 0;
-        }
-        .service-stats {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
-            gap: 10px;
-            background-color: #f8f9fa;
-            padding: 15px;
-            border-radius: 5px;
-            margin-bottom: 15px;
-        }
-        .stat {
-            text-align: center;
-        }
-        .stat-number {
-            font-size: 1.2em;
-            font-weight: bold;
-            color: #333;
-        }
-        .stat-label {
-            font-size: 0.8em;
-            color: #6c757d;
-            text-transform: uppercase;
-        }
-        .methods-list {
-            display: flex;
-            gap: 5px;
-            flex-wrap: wrap;
-        }
-        .method-badge {
-            padding: 2px 6px;
-            border-radius: 3px;
-            font-size: 0.7em;
-            font-weight: bold;
-            text-transform: uppercase;
-        }
-        .method-get { background-color: #28a745; color: white; }
-        .method-post { background-color: #007bff; color: white; }
-        .method-put { background-color: #ffc107; color: black; }
-        .method-patch { background-color: #6f42c1; color: white; }
-        .method-delete { background-color: #dc3545; color: white; }
-        .summary {
-            background-color: #e3f2fd;
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 30px;
-        }
-        .summary h2 {
-            margin-top: 0;
-            color: #1976d2;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>Services Overview</h1>
-
-        <div class="navigation">
-            <a href="/" class="nav-link">Dashboard</a>
-            <a href="/tools" class="nav-link">All Tools</a>
-            <a href="/category" class="nav-link">Categories</a>
-        </div>
-
-        <div class="summary">
-            <h2>Available Services</h2>
-            <p>The AAP MCP system integrates with ${services.length} different services, providing access to ${allTools.length} total tools across the Ansible Automation Platform ecosystem.</p>
-        </div>
-
-        <div class="services-grid">
-            ${services.map(service => `
-            <a href="/services/${service.name}" class="service-card">
-                <div class="service-header">
-                    <div class="service-icon" style="background-color: ${serviceColors[service.name] || '#6c757d'};">
-                        ${service.displayName.charAt(0)}
-                    </div>
-                    <h3 class="service-title">${service.displayName}</h3>
-                </div>
-                <div class="service-stats">
-                    <div class="stat">
-                        <div class="stat-number">${service.toolCount}</div>
-                        <div class="stat-label">Tools</div>
-                    </div>
-                    <div class="stat">
-                        <div class="stat-number">${Math.round(service.totalSize / 1000)}K</div>
-                        <div class="stat-label">Size</div>
-                    </div>
-                    <div class="stat">
-                        <div class="stat-number">${service.methods.length}</div>
-                        <div class="stat-label">Methods</div>
-                    </div>
-                </div>
-                <div class="methods-list">
-                    ${service.methods.map(method => `
-                    <span class="method-badge method-${method.toLowerCase()}">${method}</span>
-                    `).join('')}
-                </div>
-            </a>
-            `).join('')}
-        </div>
-    </div>
-</body>
-</html>`;
+    // Use the view function to render the HTML
+    const htmlContent = renderServicesOverview(servicesOverviewData);
 
     res.setHeader('Content-Type', 'text/html');
     res.send(htmlContent);
@@ -2713,221 +1119,59 @@ app.get('/services', (req, res) => {
   }
 });
 
-// Individual service details endpoint
 app.get('/services/:name', (req, res) => {
   try {
     const serviceName = req.params.name.toLowerCase();
 
-    // Find tools for this service
+    // Filter tools by service
     const serviceTools = allTools.filter(tool => (tool.service || 'unknown') === serviceName);
 
     if (serviceTools.length === 0) {
-      const availableServices = [...new Set(allTools.map(tool => tool.service || 'unknown'))];
       return res.status(404).json({
         error: 'Service not found',
-        message: `Service '${req.params.name}' does not exist. Available services: ${availableServices.join(', ')}`
+        message: `Service '${req.params.name}' does not exist or has no tools`
       });
     }
 
     const displayName = serviceName.charAt(0).toUpperCase() + serviceName.slice(1);
     const totalSize = serviceTools.reduce((sum, tool) => sum + (tool.size || 0), 0);
-    const methods = [...new Set(serviceTools.map(tool => tool.method.toUpperCase()))].sort();
+    const methods = [...new Set(serviceTools.map(tool => tool.method))];
 
-    // Group tools by HTTP method
-    const toolsByMethod: Record<string, ToolWithSize[]> = {};
-    for (const tool of serviceTools) {
-      const method = tool.method.toUpperCase();
-      if (!toolsByMethod[method]) {
-        toolsByMethod[method] = [];
-      }
-      toolsByMethod[method].push(tool);
-    }
-
-    const serviceColors: Record<string, string> = {
-      'eda': '#2196f3',
-      'controller': '#9c27b0',
-      'gateway': '#4caf50',
-      'galaxy': '#ff9800',
-      'unknown': '#f44336'
+    // Prepare data for the view
+    const serviceToolsData: ServiceToolsData = {
+      serviceName,
+      displayName,
+      serviceTools,
+      totalSize,
+      methods
     };
 
-    const htmlContent = `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${displayName} Service - AAP MCP</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-            background-color: #f5f5f5;
-        }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            background-color: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        h1 {
-            color: #333;
-            border-bottom: 2px solid #007acc;
-            padding-bottom: 10px;
-            margin-bottom: 30px;
-        }
-        .service-badge {
-            display: inline-block;
-            background-color: ${serviceColors[serviceName] || '#6c757d'};
-            color: white;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 0.9em;
-            margin-left: 10px;
-        }
-        .navigation {
-            margin-bottom: 30px;
-        }
-        .nav-link {
-            background-color: #6c757d;
-            color: white;
-            padding: 6px 12px;
-            text-decoration: none;
-            border-radius: 4px;
-            margin-right: 10px;
-            font-size: 0.9em;
-        }
-        .nav-link:hover {
-            background-color: #5a6268;
-        }
-        .stats {
-            background-color: #f8f9fa;
-            padding: 15px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-        }
-        .methods-section {
-            margin-bottom: 30px;
-        }
-        .method-group {
-            margin-bottom: 20px;
-            border: 1px solid #e9ecef;
-            border-radius: 8px;
-            overflow: hidden;
-        }
-        .method-header {
-            padding: 15px;
-            font-weight: bold;
-            color: white;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .method-get { background-color: #28a745; }
-        .method-post { background-color: #007bff; }
-        .method-put { background-color: #ffc107; color: black; }
-        .method-patch { background-color: #6f42c1; }
-        .method-delete { background-color: #dc3545; }
-        .tools-list {
-            padding: 0;
-            margin: 0;
-            list-style: none;
-        }
-        .tool-item {
-            padding: 10px 15px;
-            border-bottom: 1px solid #e9ecef;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .tool-item:last-child {
-            border-bottom: none;
-        }
-        .tool-item:hover {
-            background-color: #f8f9fa;
-        }
-        .tool-name {
-            font-weight: bold;
-            color: #007acc;
-            text-decoration: none;
-        }
-        .tool-name:hover {
-            text-decoration: underline;
-        }
-        .tool-size {
-            font-size: 0.9em;
-            color: #6c757d;
-        }
-        .method-count {
-            background-color: rgba(255,255,255,0.3);
-            padding: 4px 8px;
-            border-radius: 12px;
-            font-size: 0.8em;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>${displayName} Service<span class="service-badge">${serviceTools.length} tools</span></h1>
-
-        <div class="navigation">
-            <a href="/" class="nav-link">Dashboard</a>
-            <a href="/services" class="nav-link">All Services</a>
-            <a href="/tools" class="nav-link">All Tools</a>
-            <a href="/category" class="nav-link">Categories</a>
-        </div>
-
-        <div class="stats">
-            <strong>Service:</strong> ${displayName}<br>
-            <strong>Total Tools:</strong> ${serviceTools.length}<br>
-            <strong>Total Size:</strong> ${totalSize.toLocaleString()} characters<br>
-            <strong>HTTP Methods:</strong> ${methods.join(', ')}
-        </div>
-
-        <div class="methods-section">
-            <h2>Tools by HTTP Method</h2>
-            ${Object.entries(toolsByMethod).sort().map(([method, tools]) => `
-            <div class="method-group">
-                <div class="method-header method-${method.toLowerCase()}">
-                    <span>${method}</span>
-                    <span class="method-count">${tools.length} tools</span>
-                </div>
-                <ul class="tools-list">
-                    ${tools.map(tool => `
-                    <li class="tool-item">
-                        <a href="/tools/${encodeURIComponent(tool.name)}" class="tool-name">${tool.name}</a>
-                        <span class="tool-size">${tool.size.toLocaleString()} chars</span>
-                    </li>
-                    `).join('')}
-                </ul>
-            </div>
-            `).join('')}
-        </div>
-    </div>
-</body>
-</html>`;
+    // Use the view function to render the HTML
+    const htmlContent = renderServiceTools(serviceToolsData);
 
     res.setHeader('Content-Type', 'text/html');
     res.send(htmlContent);
   } catch (error) {
-    console.error('Error generating service details:', error);
+    console.error('Error generating service tools list:', error);
     res.status(500).json({
-      error: 'Failed to generate service details',
+      error: 'Failed to generate service tools list',
       message: error instanceof Error ? error.message : String(error)
     });
   }
 });
 
 // Root endpoint - dashboard
-app.get('/', (req, res) => {
+app.get('/', async (req, res) => {
   try {
-    const htmlContent = renderDashboard({
+    // Prepare data for the dashboard view
+    const dashboardData: DashboardData = {
       allTools,
       allCategories,
       recordApiQueries
-    });
+    };
+
+    // Use the view function to render the HTML
+    const htmlContent = renderDashboard(dashboardData);
 
     res.setHeader('Content-Type', 'text/html');
     res.send(htmlContent);
@@ -2947,7 +1191,6 @@ app.post('/mcp', (req, res) => mcpPostHandler(req, res));
 app.get('/mcp', (req, res) => mcpGetHandler(req, res));
 app.delete('/mcp', (req, res) => mcpDeleteHandler(req, res));
 
-// Category-specific routes
 app.post('/:category/mcp', (req, res) => {
   const category = req.params.category;
   console.log(`Category-specific POST request for category: ${category}`);
@@ -2972,40 +1215,24 @@ app.get('/api/v1/health', (req, res) => {
 });
 
 async function main(): Promise<void> {
-  try {
-    // Initialize tools before starting server
-    console.log('Loading OpenAPI specifications and generating tools...');
-    allTools = await generateTools();
-    console.log(`Successfully loaded ${allTools.length} tools`);
+  // Initialize tools before starting server
+  console.log('Loading OpenAPI specifications and generating tools...');
+  allTools = await generateTools();
+  console.log(`Successfully loaded ${allTools.length} tools`);
+  const PORT = process.env.MCP_PORT || 3000;
 
-    // Calculate and display category sizes
-    console.log('\n=== Category Size Summary ===');
-    for (const [categoryName, categoryTools] of Object.entries(allCategories)) {
-      const tools = filterToolsByCategory(allTools, categoryTools);
-      const size = tools.reduce((sum, tool) => sum + (tool.size || 0), 0);
-      console.log(`${categoryName.charAt(0).toUpperCase() + categoryName.slice(1)}: ${tools.length} tools, ${size.toLocaleString()} characters`);
-    }
-    console.log('============================\n');
-
-    // Start HTTP server
-    app.listen(CONFIG.MCP_PORT, (error?: Error) => {
-      if (error) {
-        console.error('Failed to start server:', error);
-        process.exit(1);
-      }
-      console.log(`MCP Streamable HTTP Server listening on port ${CONFIG.MCP_PORT}`);
-    });
-  } catch (error) {
-    console.error('Failed to initialize server:', error);
-    process.exit(1);
-  }
+  app.listen(PORT, () => {
+    console.log(`AAP MCP Server running on port ${PORT}`);
+    console.log(`Web UI available at: http://localhost:${PORT}`);
+    console.log(`MCP endpoint available at: http://localhost:${PORT}/mcp`);
+  });
 }
 
-// Handle server shutdown
+// Graceful shutdown
 process.on('SIGINT', async () => {
   console.log('Shutting down server...');
 
-  // Close all active transports to properly clean up resources
+  // Close all active transports
   for (const sessionId in transports) {
     try {
       console.log(`Closing transport for session ${sessionId}`);
