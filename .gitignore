@@ -9,3 +9,9 @@ out/
 # Logs
 logs/
 *.log
+
+# Test coverage and results
+coverage/
+test-results.json
+test-results.html
+*.lcov
