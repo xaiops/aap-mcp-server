@@ -286,8 +286,8 @@ const generateTools = async (): Promise<ToolWithSize[]> => {
 
 let allTools: ToolWithSize[] = [];
 
-// Initialize logger
-const toolLogger = new ToolLogger();
+// Initialize logger only if recording is enabled
+const toolLogger = recordApiQueries ? new ToolLogger() : null;
 
 // Helper function to read log entries for a tool
 const getToolLogEntries = async (toolName: string): Promise<LogEntry[]> => {
@@ -459,7 +459,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
     }
 
     // Log the tool access (only if recording is enabled)
-    if (recordApiQueries) {
+    if (recordApiQueries && toolLogger) {
       await toolLogger.logToolAccess(
         tool,
         fullUrl,
@@ -486,7 +486,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
     };
   } catch (error) {
     // Log the failed tool access (only if recording is enabled)
-    if (recordApiQueries) {
+    if (recordApiQueries && toolLogger) {
       await toolLogger.logToolAccess(
         tool,
         fullUrl,
