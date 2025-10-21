@@ -912,6 +912,15 @@ app.get('/logs', async (req, res) => {
       lastEntries = lastEntries.filter(entry => entry.toolName === toolFilter);
     }
 
+    // Apply user-agent filter if provided
+    const userAgentFilter = req.query.user_agent as string;
+    if (userAgentFilter) {
+      lastEntries = lastEntries.filter(entry => {
+        const entryUserAgent = entry.payload?.userAgent || 'unknown';
+        return entryUserAgent.toLowerCase().includes(userAgentFilter.toLowerCase());
+      });
+    }
+
     const totalRequests = allEntries.length;
     const statusCodeSummary = lastEntries.reduce((acc, entry) => {
       const code = entry.return_code;
@@ -921,6 +930,12 @@ app.get('/logs', async (req, res) => {
 
     const toolSummary = lastEntries.reduce((acc, entry) => {
       acc[entry.toolName] = (acc[entry.toolName] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const userAgentSummary = lastEntries.reduce((acc, entry) => {
+      const userAgent = entry.payload?.userAgent || 'unknown';
+      acc[userAgent] = (acc[userAgent] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);
 
@@ -940,8 +955,10 @@ app.get('/logs', async (req, res) => {
       totalRequests,
       statusCodeFilter,
       toolFilter,
+      userAgentFilter,
       statusCodeSummary,
-      toolSummary
+      toolSummary,
+      userAgentSummary
     };
 
     // Use the view function to render the HTML

@@ -12,12 +12,14 @@ interface LogsData {
   totalRequests: number;
   statusCodeFilter?: string;
   toolFilter?: string;
+  userAgentFilter?: string;
   statusCodeSummary: Record<number, number>;
   toolSummary: Record<string, number>;
+  userAgentSummary: Record<string, number>;
 }
 
 export const renderLogs = (data: LogsData): string => {
-  const { lastEntries, totalRequests, statusCodeFilter, toolFilter, statusCodeSummary, toolSummary } = data;
+  const { lastEntries, totalRequests, statusCodeFilter, toolFilter, userAgentFilter, statusCodeSummary, toolSummary, userAgentSummary } = data;
 
   // Helper function to format timestamp for display
   const formatTimestamp = (timestamp: string) => {
@@ -210,19 +212,26 @@ export const renderLogs = (data: LogsData): string => {
 
         <div class="summary">
             <h2>Log Summary</h2>
-            <p>Showing the last requests${(statusCodeFilter || toolFilter) ? ` out of ${lastEntries.length} filtered results` : ''} from ${totalRequests.toLocaleString()} total logged requests.${statusCodeFilter ? ` <strong>Filtered by status code: ${statusCodeFilter}</strong>` : ''}${toolFilter ? ` <strong>Filtered by tool: ${toolFilter}</strong>` : ''}</p>
+            <p>Showing the last requests${(statusCodeFilter || toolFilter || userAgentFilter) ? ` out of ${lastEntries.length} filtered results` : ''} from ${totalRequests.toLocaleString()} total logged requests.${statusCodeFilter ? ` <strong>Filtered by status code: ${statusCodeFilter}</strong>` : ''}${toolFilter ? ` <strong>Filtered by tool: ${toolFilter}</strong>` : ''}${userAgentFilter ? ` <strong>Filtered by user-agent: ${userAgentFilter}</strong>` : ''}</p>
 
             ${statusCodeFilter ? `
             <div style="margin: 20px 0; padding: 15px; background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 5px;">
                 <strong>Filtering by status code: ${statusCodeFilter}</strong>
-                <a href="/logs${toolFilter ? `?tool=${encodeURIComponent(toolFilter)}` : ''}" style="margin-left: 15px; padding: 5px 15px; background-color: #6c757d; color: white; text-decoration: none; border-radius: 4px;">Clear Status Filter</a>
+                <a href="/logs${toolFilter || userAgentFilter ? `?${toolFilter ? `tool=${encodeURIComponent(toolFilter)}` : ''}${toolFilter && userAgentFilter ? '&' : ''}${userAgentFilter ? `user_agent=${encodeURIComponent(userAgentFilter)}` : ''}` : ''}" style="margin-left: 15px; padding: 5px 15px; background-color: #6c757d; color: white; text-decoration: none; border-radius: 4px;">Clear Status Filter</a>
             </div>
             ` : ''}
 
             ${toolFilter ? `
             <div style="margin: 20px 0; padding: 15px; background-color: #d1ecf1; border: 1px solid #bee5eb; border-radius: 5px;">
                 <strong>Filtering by tool: ${toolFilter}</strong>
-                <a href="/logs${statusCodeFilter ? `?status_code=${statusCodeFilter}` : ''}" style="margin-left: 15px; padding: 5px 15px; background-color: #6c757d; color: white; text-decoration: none; border-radius: 4px;">Clear Tool Filter</a>
+                <a href="/logs${statusCodeFilter || userAgentFilter ? `?${statusCodeFilter ? `status_code=${statusCodeFilter}` : ''}${statusCodeFilter && userAgentFilter ? '&' : ''}${userAgentFilter ? `user_agent=${encodeURIComponent(userAgentFilter)}` : ''}` : ''}" style="margin-left: 15px; padding: 5px 15px; background-color: #6c757d; color: white; text-decoration: none; border-radius: 4px;">Clear Tool Filter</a>
+            </div>
+            ` : ''}
+
+            ${userAgentFilter ? `
+            <div style="margin: 20px 0; padding: 15px; background-color: #e2e3e5; border: 1px solid #d6d8db; border-radius: 5px;">
+                <strong>Filtering by user-agent: ${userAgentFilter}</strong>
+                <a href="/logs${statusCodeFilter || toolFilter ? `?${statusCodeFilter ? `status_code=${statusCodeFilter}` : ''}${statusCodeFilter && toolFilter ? '&' : ''}${toolFilter ? `tool=${encodeURIComponent(toolFilter)}` : ''}` : ''}" style="margin-left: 15px; padding: 5px 15px; background-color: #6c757d; color: white; text-decoration: none; border-radius: 4px;">Clear User-Agent Filter</a>
             </div>
             ` : ''}
 
@@ -249,6 +258,20 @@ export const renderLogs = (data: LogsData): string => {
                           .map(([tool, count]) => `
                         <a href="/logs?tool=${encodeURIComponent(tool)}" class="tool-entry" style="text-decoration: none; color: inherit; display: block; transition: background-color 0.2s ease;">
                             ${tool}: ${count}
+                        </a>
+                        `).join('')}
+                    </div>
+                </div>
+
+                <div class="summary-card">
+                    <h4>User Agents</h4>
+                    <div class="tool-summary">
+                        ${Object.entries(userAgentSummary)
+                          .sort(([,a], [,b]) => b - a)
+                          .slice(0, 8)
+                          .map(([userAgent, count]) => `
+                        <a href="/logs?user_agent=${encodeURIComponent(userAgent)}" class="tool-entry" style="text-decoration: none; color: inherit; display: block; transition: background-color 0.2s ease;">
+                            ${userAgent}: ${count}
                         </a>
                         `).join('')}
                     </div>
