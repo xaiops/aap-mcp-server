@@ -79,3 +79,92 @@ categories:
     - controller.instances_read
     - gateway.status_retrieve
     - gateway.feature_flags_state_retrieve
+
+  user_management:
+    - gateway.teams_list
+    - gateway.teams_retrieve
+    - gateway.teams_create
+    - gateway.teams_update
+    - gateway.teams_destroy
+    - gateway.teams_users_list
+    - gateway.teams_users_associate_create
+    - gateway.teams_users_disassociate_create
+    - gateway.me_list
+    - gateway.role_definitions_list
+    - gateway.role_team_assignments_list
+    - gateway.role_user_assignments_list
+    - gateway.organizations_list
+    - gateway.organizations_retrieve
+    - gateway.organizations_create
+    - gateway.organizations_update
+    - gateway.organizations_destroy
+    - gateway.activitystream_list
+    - controller.activity_stream_list
+    - gateway.users_list
+    - gateway.users_retrieve
+    - gateway.users_create
+    - gateway.users_update
+    - gateway.users_destroy
+    - gateway.users_teams_list
+    - gateway.authenticators_list
+    - gateway.authenticators_retrieve
+    - gateway.authenticators_create
+    - gateway.authenticators_update
+    - gateway.authenticators_destroy
+    - gateway.authenticator_maps_list
+    - gateway.authenticator_maps_create
+    - galaxy.api_galaxy__ui_v1_namespaces_list
+    - galaxy.api_galaxy__ui_v1_namespaces_create
+    - galaxy.repositories_ansible_ansible_list
+    - galaxy.repositories_ansible_ansible_create
+
+  security_compliance:
+    - controller.credentials_list
+    - controller.credentials_create
+    - controller.credentials_read
+    - controller.credentials_test_create
+    - controller.jobs_list
+    - gateway.activitystream_list
+    - controller.activity_stream_list
+    - galaxy.api_galaxy_content_v3_collections_versions_read
+    - galaxy.collection_import_read
+    - controller.credential_types_list
+    - controller.credential_types_create
+    - controller.credential_types_read
+    - controller.credential_types_update
+    - controller.credential_types_delete
+
+  platform_configuration:
+    - controller.settings_read
+    - controller.settings_partial_update
+    - gateway.settings_getter
+    - gateway.settings_update
+    - controller.config_list
+    - controller.config_create
+    - controller.notification_templates_list
+    - controller.notification_templates_create
+    - controller.notification_templates_read
+    - controller.notification_templates_update
+    - controller.notification_templates_delete
+    - gateway.http_ports_list
+    - gateway.http_ports_retrieve
+    - gateway.http_ports_routes_list
+    - gateway.http_ports_routes_associate_create
+    - gateway.http_ports_routes_disassociate_create
+    - controller.execution_environments_list
+    - controller.execution_environments_create
+    - controller.execution_environments_read
+    - controller.execution_environments_update
+    - controller.execution_environments_delete
+
+  developer_testing:
+    - controller.job_templates_launch_create
+    - controller.workflow_job_templates_launch_create
+    - controller.jobs_list
+    - controller.jobs_read
+    - controller.jobs_job_events_list
+    - controller.jobs_job_host_summaries_list
+    - controller.jobs_stdout_read
+    - controller.workflow_jobs_list
+    - controller.workflow_jobs_read
+    - controller.workflow_jobs_workflow_nodes_list
