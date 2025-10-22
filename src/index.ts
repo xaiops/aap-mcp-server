@@ -5,21 +5,21 @@ import { config } from "dotenv";
 import express from "express";
 import cors from "cors";
 import { randomUUID } from "node:crypto";
-import { Server } from "@modelcontextprotocol/sdk/server/index";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp";
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
   isInitializeRequest,
   Tool,
-} from "@modelcontextprotocol/sdk/types";
+} from "@modelcontextprotocol/sdk/types.js";
 import type { McpToolDefinition } from "openapi-mcp-generator";
 import { getToolsFromOpenApi } from "openapi-mcp-generator";
 import { readFileSync, writeFileSync, promises as fs } from "fs";
 import { join } from "path";
 import * as yaml from "js-yaml";
-import { ToolLogger, type LogEntry } from "./logger";
-import { renderDashboard, renderToolsList, renderToolDetails, renderCategoriesOverview, renderCategoryTools, renderLogs, renderServicesOverview, renderServiceTools, type ToolWithSuccessRate, type ToolDetailsData, type CategoryWithAccess, type CategoriesOverviewData, type CategoryToolsData, type LogsData, type ServicesOverviewData, type ServiceToolsData, type DashboardData } from "./views/index";
+import { ToolLogger, type LogEntry } from "./logger.js";
+import { renderDashboard, renderToolsList, renderToolDetails, renderCategoriesOverview, renderCategoryTools, renderLogs, renderServicesOverview, renderServiceTools, type ToolWithSuccessRate, type ToolDetailsData, type CategoryWithAccess, type CategoriesOverviewData, type CategoryToolsData, type LogsData, type ServicesOverviewData, type ServiceToolsData, type DashboardData } from "./views/index.js";
 import {
   loadOpenApiSpecs,
   type AAPMcpToolDefinition,
