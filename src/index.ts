@@ -69,16 +69,21 @@ const CONFIG = {
 // Log configuration settings
 console.log(`BASE_URL: ${CONFIG.BASE_URL}`);
 
-// Get API query recording setting (defaults to false)
-const recordApiQueries = localConfig.record_api_queries ?? false;
+// Helper function to get boolean configuration with environment variable override
+const getBooleanConfig = (envVar: string, configValue: boolean | undefined): boolean => {
+  return process.env[envVar] !== undefined
+    ? process.env[envVar]!.toLowerCase() === 'true'
+    : (configValue ?? false);
+};
+
+// Get configuration settings (priority: env var > config file > default)
+const recordApiQueries = getBooleanConfig('RECORD_API_QUERIES', localConfig.record_api_queries);
 console.log(`API query recording: ${recordApiQueries ? 'ENABLED' : 'DISABLED'}`);
 
-// Get certificate validation setting (defaults to false)
-const ignoreCertificateErrors = localConfig['ignore-certificate-errors'] ?? false;
+const ignoreCertificateErrors = getBooleanConfig('IGNORE_CERTIFICATE_ERRORS', localConfig['ignore-certificate-errors']);
 console.log(`Certificate validation: ${ignoreCertificateErrors ? 'DISABLED' : 'ENABLED'}`);
 
-// Get UI enable setting (defaults to false)
-const enableUI = localConfig.enable_ui ?? false;
+const enableUI = getBooleanConfig('ENABLE_UI', localConfig.enable_ui);
 console.log(`Web UI: ${enableUI ? 'ENABLED' : 'DISABLED'}`);
 
 // Get services configuration
