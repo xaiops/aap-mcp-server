@@ -1107,6 +1107,24 @@ app.delete('/:category/mcp', (req, res) => {
   return mcpDeleteHandler(req, res, category);
 });
 
+app.post('/mcp/:category', (req, res) => {
+  const category = req.params.category;
+  console.log(`Category-specific POST request for category: ${category}`);
+  return mcpPostHandler(req, res, category);
+});
+
+app.get('/mcp/:category', (req, res) => {
+  const category = req.params.category;
+  console.log(`Category-specific GET request for category: ${category}`);
+  return mcpGetHandler(req, res, category);
+});
+
+app.delete('/mcp/:category', (req, res) => {
+  const category = req.params.category;
+  console.log(`Category-specific DELETE request for category: ${category}`);
+  return mcpDeleteHandler(req, res, category);
+});
+
 // Health check endpoint (always enabled)
 app.get('/api/v1/health', (req, res) => {
   res.json({ status: 'ok' });
