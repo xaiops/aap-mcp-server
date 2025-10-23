@@ -23,18 +23,20 @@ services:
     # url: "https://custom-controller.example.com/api/v2/schema/"
     # local_path: "/custom/path/controller-schema.json"  # defaults to url if not specified
     # enabled: true                                       # defaults to true if not specified
+    local_path: data/controller-schema.json
   - name: galaxy
     # url: "https://custom-galaxy.example.com/api/v3/openapi.json"
     # local_path: "/custom/path/galaxy-openapi.json"     # defaults to url if not specified
     # enabled: false                                      # set to false to disable this service
+    local_path: data/galaxy-openapi.json
   - name: gateway
     # url: "https://custom-gateway.example.com/api/v1/docs/schema/"
-    # local_path: "/custom/path/gateway-schema.json"     # defaults to url if not specified
+    local_path: data/gateway-schema.json     # defaults to url if not specified
     # enabled: true                                       # defaults to true if not specified
   - name: eda
     # url: "https://custom-eda.example.com/api/v1/openapi.json"
-    # local_path: "/custom/path/eda-openapi.json"        # defaults to url if not specified
-    # enabled: true                                       # defaults to true if not specified
+    local_path: data/eda-openapi.json
+    # enabled: true
 
 categories:
   job_management:
