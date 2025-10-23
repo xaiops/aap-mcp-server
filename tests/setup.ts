@@ -11,7 +11,7 @@ process.env.BASE_URL = 'https://test.example.com';
 process.env.BEARER_TOKEN = 'test-token';
 process.env.RECORD_API_QUERIES = 'false';
 process.env.ENABLE_UI = 'true';
-process.env.DISABLE_CERT_VALIDATION = 'true';
+process.env.IGNORE_CERTIFICATE_ERRORS = 'true';
 
 // Global mocks
 vi.mock('fs', async () => {
