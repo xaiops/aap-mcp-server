@@ -168,3 +168,91 @@ categories:
     - controller.workflow_jobs_list
     - controller.workflow_jobs_read
     - controller.workflow_jobs_workflow_nodes_list
+
+  event_management:
+    - eda.event_streams_list
+    - eda.event_streams_create
+    - eda.event_streams_retrieve
+    - eda.event_streams_partial_update
+    - eda.event_streams_destroy
+    - eda.activations_list
+    - eda.activations_create
+    - eda.activations_retrieve
+    - eda.activations_partial_update
+    - eda.activations_destroy
+    - eda.activations_enable_create
+    - eda.activations_disable_create
+    - eda.activations_restart_create
+    - eda.activation_instances_list
+    - eda.activation_instances_retrieve
+    - eda.activation_instances_logs_list
+    - eda.audit_rules_list
+    - eda.audit_rules_retrieve
+    - eda.audit_rules_actions_list
+    - eda.audit_rules_events_list
+    - eda.decision_environments_list
+    - eda.decision_environments_create
+    - eda.decision_environments_retrieve
+    - eda.decision_environments_partial_update
+    - eda.decision_environments_destroy
+    - eda.rulebooks_list
+    - eda.rulebooks_retrieve
+    - eda.rulebooks_sources_list
+    - eda.rulebooks_json_retrieve
+    - eda.projects_list
+    - eda.projects_create
+    - eda.projects_retrieve
+    - eda.projects_partial_update
+    - eda.projects_destroy
+    - eda.projects_sync_create
+
+  integration:
+    - controller.notification_templates_list
+    - controller.notification_templates_create
+    - controller.notification_templates_read
+    - controller.notification_templates_update
+    - controller.notification_templates_delete
+    - controller.notification_templates_test_create
+    - controller.job_templates_notification_templates_error_list
+    - controller.job_templates_notification_templates_started_list
+    - controller.job_templates_notification_templates_success_list
+    - controller.workflow_job_templates_notification_templates_error_list
+    - controller.workflow_job_templates_notification_templates_started_list
+    - controller.workflow_job_templates_notification_templates_success_list
+    - controller.job_templates_webhook_key_list
+    - controller.job_templates_webhook_key_create
+    - controller.workflow_job_templates_webhook_key_list
+    - controller.workflow_job_templates_webhook_key_create
+    - gateway.tokens_list
+    - gateway.tokens_create
+    - gateway.tokens_retrieve
+    - gateway.tokens_update
+    - gateway.tokens_partial_update
+    - gateway.tokens_destroy
+    - gateway.applications_list
+    - gateway.applications_create
+    - gateway.applications_retrieve
+    - gateway.applications_update
+    - gateway.applications_partial_update
+    - gateway.applications_destroy
+    - gateway.applications_tokens_list
+    - gateway.authenticator_maps_list
+    - gateway.authenticator_maps_create
+    - gateway.authenticator_maps_retrieve
+    - gateway.authenticator_maps_update
+    - gateway.authenticator_maps_partial_update
+    - gateway.authenticator_maps_destroy
+    - gateway.authenticator_maps_authenticators_list
+    - gateway.authenticator_maps_authenticators_associate_create
+    - gateway.authenticator_maps_authenticators_disassociate_create
+    - gateway.http_ports_update
+    - gateway.http_ports_partial_update
+    - gateway.http_ports_destroy
+
+  developer_integration:
+    - controller.credentials_test_create
+    - controller.jobs_job_events_list
+    - controller.jobs_read
+    - controller.instance_groups_read
+    - controller.job_templates_launch_create
+    - controller.workflow_job_templates_launch_create
