@@ -181,7 +181,7 @@ When `enable_ui: true` is set in the configuration, the service provides a web i
 The service provides several MCP endpoints:
 
 - **Standard MCP**: `/mcp` (POST, GET, DELETE)
-- **Category-specific**: `/{category}/mcp` where category matches your configured categories
+- **Category-specific**: `/mcp/{category}` where category matches your configured categories
 
 ### Authentication
 
@@ -230,13 +230,13 @@ To use specific tool categories defined in your configuration:
 
 ```bash
 # Use job management tools only
-claude mcp add aap-mcp-jobs -t http http://localhost:3000/job_management/mcp
+claude mcp add aap-mcp-jobs -t http http://localhost:3000/mcp/job_management
 
 # Use inventory management tools
-claude mcp add aap-mcp-inventory -t http http://localhost:3000/inventory_management/mcp
+claude mcp add aap-mcp-inventory -t http http://localhost:3000/mcp/inventory_management
 
 # Use system monitoring tools
-claude mcp add aap-mcp-monitoring -t http http://localhost:3000/system_monitoring/mcp
+claude mcp add aap-mcp-monitoring -t http http://localhost:3000/mcp/system_monitoring
 ```
 
 ## Available Tools
