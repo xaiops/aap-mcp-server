@@ -89,12 +89,12 @@ categories:
     - gateway.teams_update
     - gateway.teams_destroy
     - gateway.teams_users_list
-    - gateway.teams_users_associate_create
-    - gateway.teams_users_disassociate_create
     - gateway.me_list
     - gateway.role_definitions_list
     - gateway.role_team_assignments_list
     - gateway.role_user_assignments_list
+    - gateway.role_user_assignments_create
+    - gateway.role_user_assignments_destroy
     - gateway.organizations_list
     - gateway.organizations_retrieve
     - gateway.organizations_create
