@@ -58,6 +58,9 @@ categories:
     - controller.metrics_list
     - controller.projects_list
     - controller.job_templates_list
+    - controller.workflow_job_templates_list
+    - controller.job_templates_read
+    - controller.workflow_job_templates_read
 
   inventory_management:
     - controller.inventories_list
