@@ -45,7 +45,7 @@ export const renderDashboard = (data: DashboardData): string => {
             min-height: 100vh;
         }
         .container {
-            max-width: 1200px;
+            max-width: 1560px;
             margin: 0 auto;
         }
         .header {
@@ -308,6 +308,32 @@ export const renderDashboard = (data: DashboardData): string => {
                 </div>
                 <br>
                 <a href="/category" class="btn btn-categories">Explore Categories</a>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon" style="background: linear-gradient(45deg, #ffc107, #e67e22);">🔗</div>
+                    <h2 class="card-title">API Endpoints</h2>
+                </div>
+                <p class="card-description">
+                    Browse all API endpoints organized by service. View HTTP methods, paths, and descriptions for each endpoint across the AAP platform services.
+                </p>
+                <div class="card-stats">
+                    <div class="stat">
+                        <div class="stat-number">${allTools.length}</div>
+                        <div class="stat-label">Endpoints</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-number">${Object.keys(serviceStats).length}</div>
+                        <div class="stat-label">Services</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-number">${[...new Set(allTools.map(t => t.method.toUpperCase()))].length}</div>
+                        <div class="stat-label">HTTP Methods</div>
+                    </div>
+                </div>
+                <br>
+                <a href="/endpoints" class="btn" style="background: linear-gradient(45deg, #ffc107, #e67e22);">View API Endpoints</a>
             </div>
 
             ${recordApiQueries ? `
