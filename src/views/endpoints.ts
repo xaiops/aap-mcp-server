@@ -12,10 +12,12 @@ export interface EndpointData {
 export interface EndpointsOverviewData {
   allTools: ToolWithSize[];
   endpointsByService: Record<string, EndpointData[]>;
+  allCategories?: Record<string, string[]>;
+  selectedCategory?: string;
 }
 
 export const renderEndpointsOverview = (data: EndpointsOverviewData): string => {
-  const { allTools, endpointsByService } = data;
+  const { allTools, endpointsByService, allCategories, selectedCategory } = data;
 
   return `
 <!DOCTYPE html>
@@ -281,6 +283,44 @@ export const renderEndpointsOverview = (data: EndpointsOverviewData): string => 
             margin-bottom: 20px;
         }
         .back-link:hover { background-color: #2980b9; }
+        .filter-section {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .filter-section label {
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        .filter-section select {
+            padding: 8px 12px;
+            border: 1px solid #bdc3c7;
+            border-radius: 5px;
+            font-size: 14px;
+            background-color: white;
+            cursor: pointer;
+            min-width: 200px;
+        }
+        .filter-section select:hover {
+            border-color: #3498db;
+        }
+        .filter-section button {
+            padding: 8px 16px;
+            background-color: #e74c3c;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .filter-section button:hover {
+            background-color: #c0392b;
+        }
     </style>
     <script>
         let currentSort = { column: null, direction: 'asc' };
@@ -364,12 +404,43 @@ export const renderEndpointsOverview = (data: EndpointsOverviewData): string => 
         }
 
         document.addEventListener('DOMContentLoaded', setupSorting);
+
+        function filterByCategory(category) {
+            const url = new URL(window.location);
+            if (category) {
+                url.searchParams.set('category', category);
+            } else {
+                url.searchParams.delete('category');
+            }
+            window.location.href = url.toString();
+        }
+
+        function clearFilter() {
+            const url = new URL(window.location);
+            url.searchParams.delete('category');
+            window.location.href = url.toString();
+        }
     </script>
 </head>
 <body>
     <div class="container">
         <a href="/" class="back-link">← Back to Dashboard</a>
         <h1>AAP API Endpoints Overview</h1>
+
+        ${allCategories ? `
+        <div class="filter-section">
+            <label for="category-filter">Filter by Category:</label>
+            <select id="category-filter" onchange="filterByCategory(this.value)">
+                <option value="">All Categories</option>
+                ${Object.keys(allCategories).map(category => `
+                    <option value="${category}" ${selectedCategory === category ? 'selected' : ''}>
+                        ${category.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                    </option>
+                `).join('')}
+            </select>
+            ${selectedCategory ? '<button onclick="clearFilter()">Clear Filter</button>' : ''}
+        </div>
+        ` : ''}
 
         <div class="stats">
             <div class="stat-card">

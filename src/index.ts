@@ -1066,6 +1066,15 @@ app.get('/services/:name', (req, res) => {
 // API endpoints overview
 app.get('/endpoints', (req, res) => {
   try {
+    // Get category filter from query parameter
+    const categoryFilter = req.query.category as string | undefined;
+
+    // Filter tools by category if specified
+    let toolsToDisplay = allTools;
+    if (categoryFilter && allCategories[categoryFilter]) {
+      toolsToDisplay = filterToolsByCategory(allTools, allCategories[categoryFilter]);
+    }
+
     // Helper function to find categories for a tool
     const getCategoriesForTool = (toolName: string): string[] => {
       const categories: string[] = [];
@@ -1078,7 +1087,7 @@ app.get('/endpoints', (req, res) => {
     };
 
     // Group endpoints by service
-    const endpointsByService = allTools.reduce((acc, tool) => {
+    const endpointsByService = toolsToDisplay.reduce((acc, tool) => {
       const service = tool.service || 'unknown';
       if (!acc[service]) {
         acc[service] = [];
@@ -1105,8 +1114,10 @@ app.get('/endpoints', (req, res) => {
 
     // Prepare data for the view
     const endpointsOverviewData: EndpointsOverviewData = {
-      allTools,
-      endpointsByService
+      allTools: toolsToDisplay,
+      endpointsByService,
+      allCategories,
+      selectedCategory: categoryFilter
     };
 
     // Use the view function to render the HTML
