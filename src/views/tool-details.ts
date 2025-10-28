@@ -93,7 +93,7 @@ export const renderToolDetails = (data: ToolDetailsData): string => {
             line-height: 1.6;
         }
         .container {
-            max-width: 1000px;
+            max-width: 1300px;
             margin: 0 auto;
             background-color: white;
             padding: 30px;

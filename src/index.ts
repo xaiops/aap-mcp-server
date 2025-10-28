@@ -19,7 +19,7 @@ import { readFileSync, writeFileSync, promises as fs } from "fs";
 import { join } from "path";
 import * as yaml from "js-yaml";
 import { ToolLogger, type LogEntry } from "./logger.js";
-import { renderDashboard, renderToolsList, renderToolDetails, renderCategoriesOverview, renderCategoryTools, renderLogs, renderServicesOverview, renderServiceTools, type ToolWithSuccessRate, type ToolDetailsData, type CategoryWithAccess, type CategoriesOverviewData, type CategoryToolsData, type LogsData, type ServicesOverviewData, type ServiceToolsData, type DashboardData } from "./views/index.js";
+import { renderDashboard, renderToolsList, renderToolDetails, renderCategoriesOverview, renderCategoryTools, renderLogs, renderServicesOverview, renderServiceTools, renderEndpointsOverview, type ToolWithSuccessRate, type ToolDetailsData, type CategoryWithAccess, type CategoriesOverviewData, type CategoryToolsData, type LogsData, type ServicesOverviewData, type ServiceToolsData, type DashboardData, type EndpointsOverviewData } from "./views/index.js";
 import {
   loadOpenApiSpecs,
   type AAPMcpToolDefinition,
@@ -1058,6 +1058,66 @@ app.get('/services/:name', (req, res) => {
     console.error('Error generating service tools list:', error);
     res.status(500).json({
       error: 'Failed to generate service tools list',
+      message: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
+// API endpoints overview
+app.get('/endpoints', (req, res) => {
+  try {
+    // Helper function to find categories for a tool
+    const getCategoriesForTool = (toolName: string): string[] => {
+      const categories: string[] = [];
+      for (const [categoryName, categoryTools] of Object.entries(allCategories)) {
+        if (categoryTools.includes(toolName)) {
+          categories.push(categoryName);
+        }
+      }
+      return categories;
+    };
+
+    // Group endpoints by service
+    const endpointsByService = allTools.reduce((acc, tool) => {
+      const service = tool.service || 'unknown';
+      if (!acc[service]) {
+        acc[service] = [];
+      }
+
+      const categories = getCategoriesForTool(tool.name);
+
+      acc[service].push({
+        path: tool.pathTemplate,
+        method: tool.method.toUpperCase(),
+        name: tool.name,
+        description: tool.description,
+        toolName: tool.name,
+        categories
+      });
+
+      return acc;
+    }, {} as Record<string, Array<{path: string, method: string, name: string, description: string, toolName?: string, categories: string[]}>>);
+
+    // Sort endpoints within each service by path
+    Object.keys(endpointsByService).forEach(service => {
+      endpointsByService[service].sort((a, b) => a.path.localeCompare(b.path));
+    });
+
+    // Prepare data for the view
+    const endpointsOverviewData: EndpointsOverviewData = {
+      allTools,
+      endpointsByService
+    };
+
+    // Use the view function to render the HTML
+    const htmlContent = renderEndpointsOverview(endpointsOverviewData);
+
+    res.setHeader('Content-Type', 'text/html');
+    res.send(htmlContent);
+  } catch (error) {
+    console.error('Error generating endpoints overview:', error);
+    res.status(500).json({
+      error: 'Failed to generate endpoints overview',
       message: error instanceof Error ? error.message : String(error)
     });
   }

@@ -38,7 +38,7 @@ export const renderServicesOverview = (data: ServicesOverviewData): string => {
             background-color: #f5f5f5;
         }
         .container {
-            max-width: 1000px;
+            max-width: 1300px;
             margin: 0 auto;
             background-color: white;
             padding: 20px;
@@ -208,7 +208,7 @@ export const renderServiceTools = (data: ServiceToolsData): string => {
             background-color: #f5f5f5;
         }
         .container {
-            max-width: 1200px;
+            max-width: 1560px;
             margin: 0 auto;
             background-color: white;
             padding: 20px;

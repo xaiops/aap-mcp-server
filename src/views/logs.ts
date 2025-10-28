@@ -58,7 +58,7 @@ export const renderLogs = (data: LogsData): string => {
             background-color: #f5f5f5;
         }
         .container {
-            max-width: 1400px;
+            max-width: 1820px;
             margin: 0 auto;
             background-color: white;
             padding: 20px;

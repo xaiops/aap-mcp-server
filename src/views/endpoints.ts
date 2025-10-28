@@ -1,0 +1,423 @@
+import { ToolWithSize } from '../index.js';
+
+export interface EndpointData {
+  path: string;
+  method: string;
+  name: string;
+  description: string;
+  toolName?: string;
+  categories: string[];
+}
+
+export interface EndpointsOverviewData {
+  allTools: ToolWithSize[];
+  endpointsByService: Record<string, EndpointData[]>;
+}
+
+export const renderEndpointsOverview = (data: EndpointsOverviewData): string => {
+  const { allTools, endpointsByService } = data;
+
+  return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AAP API Endpoints Overview</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f8f9fa;
+            color: #333;
+        }
+        .container { max-width: 1560px; margin: 0 auto; }
+        h1 { color: #2c3e50; margin-bottom: 30px; }
+        h2 {
+            color: #34495e;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+            margin-top: 40px;
+        }
+        .service-section {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .endpoint {
+            display: grid;
+            grid-template-columns: 80px 1fr 1fr 150px 120px;
+            align-items: center;
+            padding: 12px;
+            border-bottom: 1px solid #ecf0f1;
+            gap: 15px;
+        }
+        .endpoint:last-child { border-bottom: none; }
+        .method {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 12px;
+            text-align: center;
+            min-width: 60px;
+        }
+        .method.GET { background-color: #3498db; color: white; }
+        .method.POST { background-color: #2ecc71; color: white; }
+        .method.PUT { background-color: #f39c12; color: white; }
+        .method.DELETE { background-color: #e74c3c; color: white; }
+        .method.PATCH { background-color: #9b59b6; color: white; }
+        .path {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            background-color: #f8f9fa;
+            padding: 4px 8px;
+            border-radius: 4px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .description {
+            color: #7f8c8d;
+            font-size: 14px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .tool-name {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            background-color: #e3f2fd;
+            color: #1565c0;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            text-align: center;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .tool-name.empty {
+            background-color: #f5f5f5;
+            color: #9e9e9e;
+            font-style: italic;
+        }
+        .endpoint-header {
+            display: grid;
+            grid-template-columns: 80px 1fr 1fr 150px 120px;
+            align-items: center;
+            padding: 12px;
+            gap: 15px;
+            background-color: #f8f9fa;
+            border-bottom: 2px solid #dee2e6;
+            font-weight: bold;
+            color: #495057;
+        }
+        .sortable-header {
+            cursor: pointer;
+            user-select: none;
+            transition: background-color 0.2s;
+            padding: 4px 8px;
+            border-radius: 4px;
+            position: relative;
+        }
+        .sortable-header:hover {
+            background-color: #e9ecef;
+        }
+        .sort-indicator {
+            font-size: 10px;
+            margin-left: 5px;
+            opacity: 0.5;
+        }
+        .sort-indicator.active {
+            opacity: 1;
+        }
+        .categories {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            overflow: hidden;
+        }
+        .category-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 16px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-size: 11px;
+            font-weight: 600;
+            text-decoration: none;
+            white-space: nowrap;
+            transition: all 0.2s ease;
+            border: 1px solid transparent;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .category-admin {
+            background-color: #fee2e2;
+            color: #dc2626;
+            border-color: #fecaca;
+        }
+        .category-user {
+            background-color: #dcfce7;
+            color: #16a34a;
+            border-color: #bbf7d0;
+        }
+        .category-anonymous {
+            background-color: #f1f5f9;
+            color: #475569;
+            border-color: #e2e8f0;
+        }
+        .category-unknown {
+            background-color: #fef3c7;
+            color: #d97706;
+            border-color: #fde68a;
+        }
+        .category-system_monitoring {
+            background-color: #dbeafe;
+            color: #2563eb;
+            border-color: #bfdbfe;
+        }
+        .category-job_management {
+            background-color: #f3e8ff;
+            color: #7c3aed;
+            border-color: #e9d5ff;
+        }
+        .category-credential_management {
+            background-color: #fdf4ff;
+            color: #c026d3;
+            border-color: #f5d0fe;
+        }
+        .category-badge:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+            text-decoration: none;
+        }
+        .category-admin:hover {
+            background-color: #fca5a5;
+            border-color: #f87171;
+        }
+        .category-user:hover {
+            background-color: #86efac;
+            border-color: #4ade80;
+        }
+        .category-anonymous:hover {
+            background-color: #cbd5e1;
+            border-color: #94a3b8;
+        }
+        .category-unknown:hover {
+            background-color: #fcd34d;
+            border-color: #fbbf24;
+        }
+        .category-system_monitoring:hover {
+            background-color: #93c5fd;
+            border-color: #60a5fa;
+        }
+        .category-job_management:hover {
+            background-color: #c4b5fd;
+            border-color: #a78bfa;
+        }
+        .category-credential_management:hover {
+            background-color: #f0abfc;
+            border-color: #e879f9;
+        }
+        .tool-name-link {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            background-color: #e3f2fd;
+            color: #1565c0;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            text-align: center;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            text-decoration: none;
+            transition: all 0.2s ease;
+        }
+        .tool-name-link:hover {
+            background-color: #bbdefb;
+            color: #0d47a1;
+            text-decoration: none;
+            transform: translateY(-1px);
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .stat-card-clickable {
+            text-decoration: none;
+            color: inherit;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        .stat-card-clickable:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+            text-decoration: none;
+            color: inherit;
+        }
+        .stat-card-clickable:hover .stat-number {
+            color: #2980b9;
+        }
+        .stat-number { font-size: 2em; font-weight: bold; color: #3498db; }
+        .stat-label { color: #7f8c8d; margin-top: 5px; }
+        .back-link {
+            background-color: #3498db;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 5px;
+            display: inline-block;
+            margin-bottom: 20px;
+        }
+        .back-link:hover { background-color: #2980b9; }
+    </style>
+    <script>
+        let currentSort = { column: null, direction: 'asc' };
+
+        function sortTable(column, serviceSection) {
+            const rows = Array.from(serviceSection.querySelectorAll('.endpoint'));
+
+            // Toggle sort direction if clicking the same column
+            if (currentSort.column === column) {
+                currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+            } else {
+                currentSort.column = column;
+                currentSort.direction = 'asc';
+            }
+
+            // Update sort indicators
+            const indicators = serviceSection.querySelectorAll('.sort-indicator');
+            indicators.forEach(indicator => {
+                indicator.textContent = '↕';
+                indicator.classList.remove('active');
+            });
+
+            const activeIndicator = serviceSection.querySelector('[data-column="' + column + '"] .sort-indicator');
+            if (activeIndicator) {
+                activeIndicator.textContent = currentSort.direction === 'asc' ? '↑' : '↓';
+                activeIndicator.classList.add('active');
+            }
+
+            // Sort rows
+            rows.sort((a, b) => {
+                let aVal, bVal;
+
+                switch (column) {
+                    case 'method':
+                        aVal = a.children[0].textContent;
+                        bVal = b.children[0].textContent;
+                        break;
+                    case 'path':
+                        aVal = a.children[1].textContent;
+                        bVal = b.children[1].textContent;
+                        break;
+                    case 'description':
+                        aVal = a.children[2].textContent;
+                        bVal = b.children[2].textContent;
+                        break;
+                    case 'tool':
+                        aVal = a.children[3].textContent;
+                        bVal = b.children[3].textContent;
+                        break;
+                    case 'categories':
+                        aVal = a.children[4].textContent;
+                        bVal = b.children[4].textContent;
+                        break;
+                    default:
+                        return 0;
+                }
+
+                if (currentSort.direction === 'asc') {
+                    return aVal.localeCompare(bVal);
+                } else {
+                    return bVal.localeCompare(aVal);
+                }
+            });
+
+            // Re-insert sorted rows
+            const header = serviceSection.querySelector('.endpoint-header');
+            rows.forEach(row => {
+                serviceSection.insertBefore(row, null);
+            });
+        }
+
+        function setupSorting() {
+            document.querySelectorAll('.service-section').forEach(section => {
+                section.querySelectorAll('.sortable-header').forEach(header => {
+                    header.addEventListener('click', () => {
+                        const column = header.getAttribute('data-column');
+                        sortTable(column, section);
+                    });
+                });
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', setupSorting);
+    </script>
+</head>
+<body>
+    <div class="container">
+        <a href="/" class="back-link">← Back to Dashboard</a>
+        <h1>AAP API Endpoints Overview</h1>
+
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-number">${allTools.length}</div>
+                <div class="stat-label">Total Endpoints</div>
+            </div>
+            <a href="/services" class="stat-card stat-card-clickable">
+                <div class="stat-number">${Object.keys(endpointsByService).length}</div>
+                <div class="stat-label">Services</div>
+            </a>
+            <a href="/tools" class="stat-card stat-card-clickable">
+                <div class="stat-number">${Object.values(endpointsByService).flat().filter(e => e.toolName).length}</div>
+                <div class="stat-label">Tools</div>
+            </a>
+        </div>
+
+        ${Object.entries(endpointsByService).map(([service, endpoints]) => {
+          const displayName = service.charAt(0).toUpperCase() + service.slice(1);
+          return `
+        <div class="service-section">
+            <h2>${displayName} Service (${endpoints.length} endpoints)</h2>
+            <div class="endpoint-header">
+                <span class="sortable-header" data-column="method">Method <span class="sort-indicator">↕</span></span>
+                <span class="sortable-header" data-column="path">Path <span class="sort-indicator">↕</span></span>
+                <span class="sortable-header" data-column="description">Description <span class="sort-indicator">↕</span></span>
+                <span class="sortable-header" data-column="tool">Tool Name <span class="sort-indicator">↕</span></span>
+                <span class="sortable-header" data-column="categories">Categories <span class="sort-indicator">↕</span></span>
+            </div>
+            ${endpoints.map(endpoint => {
+              const categoriesHtml = endpoint.categories.length > 0
+                ? endpoint.categories.map(cat => `<a href="/category/${cat}" class="category-badge category-${cat}">${cat}</a>`).join('')
+                : '';
+
+              const toolLink = endpoint.toolName ? `<a href="/tools/${endpoint.toolName}" class="tool-name-link">${endpoint.toolName}</a>` : 'N/A';
+
+              return `
+            <div class="endpoint">
+                <span class="method ${endpoint.method}">${endpoint.method}</span>
+                <span class="path">${endpoint.path}</span>
+                <span class="description">${endpoint.description || 'No description available'}</span>
+                <span class="tool-name${!endpoint.toolName ? ' empty' : ''}">${toolLink}</span>
+                <span class="categories">${categoriesHtml}</span>
+            </div>`;
+            }).join('')}
+        </div>`;
+        }).join('')}
+    </div>
+</body>
+</html>`;
+};
+
