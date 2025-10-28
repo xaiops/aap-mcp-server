@@ -39,6 +39,7 @@ services:
     # enabled: true
 
 categories:
+  # Phase 1
   job_management:
     - controller.job_templates_launch_create
     - controller.workflow_job_templates_launch_create
@@ -82,6 +83,7 @@ categories:
     - gateway.status_retrieve
     - gateway.feature_flags_state_retrieve
 
+  # Phase 2
   user_management:
     - gateway.teams_list
     - gateway.teams_retrieve
@@ -115,10 +117,10 @@ categories:
     - gateway.authenticators_destroy
     - gateway.authenticator_maps_list
     - gateway.authenticator_maps_create
-    - galaxy.api_galaxy__ui_v1_namespaces_list
-    - galaxy.api_galaxy__ui_v1_namespaces_create
-    - galaxy.repositories_ansible_ansible_list
-    - galaxy.repositories_ansible_ansible_create
+    # - galaxy.api_galaxy__ui_v1_namespaces_list
+    # - galaxy.api_galaxy__ui_v1_namespaces_create
+    # - galaxy.repositories_ansible_ansible_list
+    # - galaxy.repositories_ansible_ansible_create
 
   security_compliance:
     - controller.credentials_list
@@ -128,8 +130,8 @@ categories:
     - controller.jobs_list
     - gateway.activitystream_list
     - controller.activity_stream_list
-    - galaxy.api_galaxy_content_v3_collections_versions_read
-    - galaxy.collection_import_read
+    # - galaxy.api_galaxy_content_v3_collections_versions_read
+    # - galaxy.collection_import_read
     - controller.credential_types_list
     - controller.credential_types_create
     - controller.credential_types_read
@@ -159,6 +161,7 @@ categories:
     - controller.execution_environments_update
     - controller.execution_environments_delete
 
+  # Phase 3
   developer_testing:
     - controller.job_templates_launch_create
     - controller.workflow_job_templates_launch_create
