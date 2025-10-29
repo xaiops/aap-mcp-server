@@ -619,7 +619,7 @@ const mcpPostHandler = async (req: express.Request, res: express.Response, categ
   }
 };
 
-// MCP GET endpoint for SSE streams
+// MCP GET endpoint for streaming data
 const mcpGetHandler = async (req: express.Request, res: express.Response, categoryOverride?: string) => {
   const sessionId = req.headers['mcp-session-id'] as string;
   const authHeader = req.headers['authorization'] as string;
@@ -635,7 +635,7 @@ const mcpGetHandler = async (req: express.Request, res: express.Response, catego
   if (lastEventId) {
     console.log(`Client reconnecting with Last-Event-ID: ${lastEventId}`);
   } else {
-    console.log(`Establishing new SSE stream for session ${sessionId}`);
+    console.log(`Establishing a new stream for session ${sessionId}`);
   }
 
   const transport = transports[sessionId];
