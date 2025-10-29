@@ -1,6 +1,6 @@
-import { ToolWithSize } from '../index.js';
+import { AAPMcpToolDefinition } from '../openapi-loader.js';
 
-interface ToolWithSuccessRate extends ToolWithSize {
+interface ToolWithSuccessRate extends AAPMcpToolDefinition {
   successRate: string;
   logCount: number;
 }

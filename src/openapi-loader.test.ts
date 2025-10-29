@@ -21,6 +21,8 @@ const createMockTool = (overrides: Partial<AAPMcpToolDefinition> = {}): AAPMcpTo
   securityRequirements: [] as any,
   operationId: 'test-op',
   deprecated: false,
+  logs: [],
+  size: 100,
   ...overrides
 });
 
@@ -117,7 +119,13 @@ describe('OpenAPI Loader', () => {
 
       const result = reformatGatewayTool(mockTool);
 
-      expect(result).toBe(false);
+      expect(result).toBeTruthy();
+      if (result) {
+        expect(result.logs).toContainEqual({
+          severity: "WARN",
+          msg: "tool should be marked as deprecated"
+        });
+      }
     });
 
     it('should handle tools without description', () => {
@@ -154,6 +162,10 @@ describe('OpenAPI Loader', () => {
       const result = reformatGalaxyTool(mockTool);
 
       expect(result).toBe(false);
+      expect(mockTool.logs).toContainEqual({
+        severity: "INFO",
+        msg: "tool ignored, name doesn't start with api_galaxy_v3"
+      });
     });
 
     it('should rename v3 tools correctly', () => {

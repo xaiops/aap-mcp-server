@@ -1,4 +1,6 @@
-import { ToolWithSize } from '../index.js';
+import { AAPMcpToolDefinition } from '../openapi-loader.js';
+import { McpToolLogEntry } from '../extract-tools.js';
+import { getLogIcon } from './utils.js';
 
 export interface EndpointData {
   path: string;
@@ -7,10 +9,11 @@ export interface EndpointData {
   description: string;
   toolName?: string;
   categories: string[];
+  logs: McpToolLogEntry[];
 }
 
 export interface EndpointsOverviewData {
-  allTools: ToolWithSize[];
+  allTools: AAPMcpToolDefinition[];
   endpointsByService: Record<string, EndpointData[]>;
   allCategories?: Record<string, string[]>;
   selectedCategory?: string;
@@ -51,7 +54,7 @@ export const renderEndpointsOverview = (data: EndpointsOverviewData): string => 
         }
         .endpoint {
             display: grid;
-            grid-template-columns: 80px 1fr 1fr 150px 120px;
+            grid-template-columns: 80px 1fr 1fr 150px 120px 180px;
             align-items: center;
             padding: 12px;
             border-bottom: 1px solid #ecf0f1;
@@ -107,7 +110,7 @@ export const renderEndpointsOverview = (data: EndpointsOverviewData): string => 
         }
         .endpoint-header {
             display: grid;
-            grid-template-columns: 80px 1fr 1fr 150px 120px;
+            grid-template-columns: 80px 1fr 1fr 150px 120px 180px;
             align-items: center;
             padding: 12px;
             gap: 15px;
@@ -221,6 +224,81 @@ export const renderEndpointsOverview = (data: EndpointsOverviewData): string => 
         .category-credential_management:hover {
             background-color: #f0abfc;
             border-color: #e879f9;
+        }
+        .logs {
+            display: flex;
+            flex-direction: row;
+            flex-wrap: wrap;
+            gap: 4px;
+            align-items: center;
+            padding: 2px;
+        }
+        .log-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-size: 11px;
+            font-weight: 500;
+            text-decoration: none;
+            white-space: nowrap;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            margin: 2px 0;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .log-badge:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+            text-decoration: none;
+        }
+        .log-badge.info {
+            background-color: #e1f5fe;
+            color: #0277bd;
+            border: 1px solid #81d4fa;
+        }
+        .log-badge.info:hover {
+            background-color: #bbdefb;
+            color: #01579b;
+            border-color: #4fc3f7;
+        }
+        .log-badge.warn {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        .log-badge.warn:hover {
+            background-color: #fff176;
+            color: #f57f17;
+            border-color: #ffcc02;
+        }
+        .log-badge.err {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .log-badge.err:hover {
+            background-color: #f5c6cb;
+            color: #491217;
+            border-color: #dc3545;
+        }
+        .log-badge.empty {
+            background-color: #f8f9fa;
+            color: #6c757d;
+            border: 1px solid #dee2e6;
+            font-style: italic;
+        }
+        .log-icon {
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .log-icon.info {
+            color: #0288d1;
+        }
+        .log-icon.warn {
+            color: #f57c00;
         }
         .tool-name-link {
             font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
@@ -374,6 +452,10 @@ export const renderEndpointsOverview = (data: EndpointsOverviewData): string => 
                         aVal = a.children[4].textContent;
                         bVal = b.children[4].textContent;
                         break;
+                    case 'logs':
+                        aVal = a.children[5].textContent;
+                        bVal = b.children[5].textContent;
+                        break;
                     default:
                         return 0;
                 }
@@ -468,6 +550,7 @@ export const renderEndpointsOverview = (data: EndpointsOverviewData): string => 
                 <span class="sortable-header" data-column="description">Description <span class="sort-indicator">↕</span></span>
                 <span class="sortable-header" data-column="tool">Tool Name <span class="sort-indicator">↕</span></span>
                 <span class="sortable-header" data-column="categories">Categories <span class="sort-indicator">↕</span></span>
+                <span class="sortable-header" data-column="logs">Logs <span class="sort-indicator">↕</span></span>
             </div>
             ${endpoints.map(endpoint => {
               const categoriesHtml = endpoint.categories.length > 0
@@ -476,6 +559,21 @@ export const renderEndpointsOverview = (data: EndpointsOverviewData): string => 
 
               const toolLink = endpoint.toolName ? `<a href="/tools/${endpoint.toolName}" class="tool-name-link">${endpoint.toolName}</a>` : 'N/A';
 
+              // Count log entries by severity
+              const logCounts = endpoint.logs.reduce((counts, log) => {
+                const severity = log.severity.toLowerCase();
+                counts[severity] = (counts[severity] || 0) + 1;
+                return counts;
+              }, {} as Record<string, number>);
+
+              const logsHtml = Object.entries(logCounts).map(([severity, count]) => {
+                    const icon = getLogIcon(severity.toUpperCase());
+                    return `<a href="/tools/${encodeURIComponent(endpoint.name)}" class="log-badge ${severity}">
+                      <span class="log-icon ${severity}">${icon}</span>
+                      ${count}
+                    </a>`;
+                  }).join(' ');
+
               return `
             <div class="endpoint">
                 <span class="method ${endpoint.method}">${endpoint.method}</span>
@@ -483,6 +581,7 @@ export const renderEndpointsOverview = (data: EndpointsOverviewData): string => 
                 <span class="description">${endpoint.description || 'No description available'}</span>
                 <span class="tool-name${!endpoint.toolName ? ' empty' : ''}">${toolLink}</span>
                 <span class="categories">${categoriesHtml}</span>
+                <span class="logs">${logsHtml}</span>
             </div>`;
             }).join('')}
         </div>`;

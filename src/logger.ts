@@ -12,7 +12,6 @@ export interface LogEntry {
 export interface Tool {
   name: string;
   service?: string;
-  [key: string]: any;
 }
 
 export class ToolLogger {

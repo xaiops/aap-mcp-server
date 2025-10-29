@@ -14,12 +14,12 @@ import {
   Tool,
 } from "@modelcontextprotocol/sdk/types.js";
 import type { McpToolDefinition } from "openapi-mcp-generator";
-import { getToolsFromOpenApi } from "openapi-mcp-generator";
+import { extractToolsFromApi } from "./extract-tools.js";
 import { readFileSync, writeFileSync, promises as fs } from "fs";
 import { join } from "path";
 import * as yaml from "js-yaml";
 import { ToolLogger, type LogEntry } from "./logger.js";
-import { renderDashboard, renderToolsList, renderToolDetails, renderCategoriesOverview, renderCategoryTools, renderLogs, renderServicesOverview, renderServiceTools, renderEndpointsOverview, type ToolWithSuccessRate, type ToolDetailsData, type CategoryWithAccess, type CategoriesOverviewData, type CategoryToolsData, type LogsData, type ServicesOverviewData, type ServiceToolsData, type DashboardData, type EndpointsOverviewData } from "./views/index.js";
+import { renderDashboard, renderToolsList, renderToolDetails, renderCategoriesOverview, renderCategoryTools, renderLogs, renderServicesOverview, renderServiceTools, renderEndpointsOverview, type ToolWithSuccessRate, type ToolDetailsData, type CategoryWithAccess, type CategoriesOverviewData, type CategoryToolsData, type LogsData, type ServicesOverviewData, type ServiceToolsData, type DashboardData, type EndpointsOverviewData, type EndpointData } from "./views/index.js";
 import {
   loadOpenApiSpecs,
   type AAPMcpToolDefinition,
@@ -106,17 +106,6 @@ interface SessionData {
   };
 }
 
-export interface ToolWithSize {
-  name: string;
-  description: string;
-  inputSchema: any;
-  pathTemplate: string;
-  method: string;
-  parameters?: any[];
-  size: number;
-  deprecated?: boolean;
-  service?: string;
-}
 
 // Helper functions
 const extractBearerToken = (authHeader: string | undefined): string | undefined => {
@@ -211,7 +200,7 @@ const getUserCategory = (sessionId: string | undefined, categoryOverride?: strin
 };
 
 // Filter tools based on category
-const filterToolsByCategory = (tools: ToolWithSize[], category: Category): ToolWithSize[] => {
+const filterToolsByCategory = (tools: AAPMcpToolDefinition[], category: Category): AAPMcpToolDefinition[] => {
   return tools.filter(tool => category.includes(tool.name));
 };
 
@@ -224,7 +213,7 @@ const getCategoryColor = (categoryName: string): string => {
 
 
 // Generate tools from OpenAPI specs
-const generateTools = async (): Promise<ToolWithSize[]> => {
+const generateTools = async (): Promise<AAPMcpToolDefinition[]> => {
   const openApiSpecs = await loadOpenApiSpecs(servicesConfig, CONFIG.BASE_URL);
   let rawToolList: AAPMcpToolDefinition[] = [];
 
@@ -243,14 +232,17 @@ const generateTools = async (): Promise<ToolWithSize[]> => {
     const bundledSpec = await (new OASNormalize(mspecification)).bundle();
 
     try {
-      const tools = await getToolsFromOpenApi(bundledSpec as any, {
-        baseUrl: CONFIG.BASE_URL,
-      }) as AAPMcpToolDefinition[];
+      const tools = extractToolsFromApi(bundledSpec as any) as AAPMcpToolDefinition[];
       const filteredTools = tools.filter((tool) => {
         tool.service = spec.service; // Add service information to each tool
+        tool.logs = tool.logs || []; // Ensure logs array is initialized
+        const originDescription = tool.description;
         const result = spec.reformatFunc(tool);
+        if (result !== false) {
+          result.originalDescription = originDescription;
+        }
         return result !== false;
-      }).filter(tool => !tool.deprecated); // Controller API doesn't expose the deprecated flag yet
+      });
       rawToolList = rawToolList.concat(filteredTools);
     } catch (error) {
       console.error("Error generating tools from OpenAPI spec:", error);
@@ -258,7 +250,7 @@ const generateTools = async (): Promise<ToolWithSize[]> => {
   }
 
   // Calculate size for each tool and sort by size
-  const toolsWithSize: ToolWithSize[] = rawToolList.map(tool => {
+  const toolsWithSize: AAPMcpToolDefinition[] = rawToolList.map(tool => {
     const toolSize = JSON.stringify({
       name: tool.name,
       description: tool.description,
@@ -289,7 +281,7 @@ const generateTools = async (): Promise<ToolWithSize[]> => {
   return toolsWithSize;
 };
 
-let allTools: ToolWithSize[] = [];
+let allTools: AAPMcpToolDefinition[] = [];
 
 // Initialize logger only if recording is enabled
 const toolLogger = recordApiQueries ? new ToolLogger() : null;
@@ -991,7 +983,7 @@ app.get('/services', (req, res) => {
       }
       acc[service].push(tool);
       return acc;
-    }, {} as Record<string, ToolWithSize[]>);
+    }, {} as Record<string, AAPMcpToolDefinition[]>);
 
     // Prepare service data for the view
     const services = Object.entries(serviceGroups).map(([serviceName, tools]) => ({
@@ -999,6 +991,7 @@ app.get('/services', (req, res) => {
       displayName: serviceName.charAt(0).toUpperCase() + serviceName.slice(1),
       toolCount: tools.length,
       totalSize: tools.reduce((sum, tool) => sum + (tool.size || 0), 0),
+      logCount: tools.reduce((sum, tool) => sum + (tool.logs?.length || 0), 0),
       description: `${serviceName.charAt(0).toUpperCase() + serviceName.slice(1)} service providing ${tools.length} tools for automation and management tasks.`
     }));
 
@@ -1101,11 +1094,12 @@ app.get('/endpoints', (req, res) => {
         name: tool.name,
         description: tool.description,
         toolName: tool.name,
-        categories
+        categories,
+        logs: tool.logs || []
       });
 
       return acc;
-    }, {} as Record<string, Array<{path: string, method: string, name: string, description: string, toolName?: string, categories: string[]}>>);
+    }, {} as Record<string, EndpointData[]>);
 
     // Sort endpoints within each service by path
     Object.keys(endpointsByService).forEach(service => {
@@ -1210,6 +1204,15 @@ async function main(): Promise<void> {
   // Initialize tools before starting server
   console.log('Loading OpenAPI specifications and generating tools...');
   allTools = await generateTools();
+  allTools.forEach(tool => {
+    if (tool.deprecated) tool.logs.push({ severity: "INFO", msg: "endpoint is deprecated" })
+    if (tool.name.length > 64) {
+      tool.logs.push({ severity: "ERR", msg: "tool name is too long (64)" })
+    } else if (tool.name.length > 40) {
+      tool.logs.push({ severity: "WARN", msg: "tool name is too long (40)" })
+    }
+  });
+
   console.log(`Successfully loaded ${allTools.length} tools`);
   const PORT = process.env.MCP_PORT || 3000;
 

@@ -4,9 +4,9 @@ import { renderDashboard, type DashboardData } from './dashboard';
 describe('Dashboard View', () => {
   const mockDashboardData: DashboardData = {
     allTools: [
-      { name: 'tool1', service: 'eda', size: 100, method: 'GET', pathTemplate: '/test1', inputSchema: {}, description: 'Test tool 1' },
-      { name: 'tool2', service: 'controller', size: 200, method: 'POST', pathTemplate: '/test2', inputSchema: {}, description: 'Test tool 2' },
-      { name: 'tool3', service: 'gateway', size: 300, method: 'GET', pathTemplate: '/test3', inputSchema: {}, description: 'Test tool 3' },
+      { name: 'tool1', service: 'eda', size: 100, method: 'GET', pathTemplate: '/test1', inputSchema: {}, description: 'Test tool 1', logs: [], parameters: [], executionParameters: [], securityRequirements: [], operationId: 'test1', deprecated: false },
+      { name: 'tool2', service: 'controller', size: 200, method: 'POST', pathTemplate: '/test2', inputSchema: {}, description: 'Test tool 2', logs: [], parameters: [], executionParameters: [], securityRequirements: [], operationId: 'test2', deprecated: false },
+      { name: 'tool3', service: 'gateway', size: 300, method: 'GET', pathTemplate: '/test3', inputSchema: {}, description: 'Test tool 3', logs: [], parameters: [], executionParameters: [], securityRequirements: [], operationId: 'test3', deprecated: false },
     ],
     allCategories: {
       admin: ['tool1', 'tool2'],

@@ -1,7 +1,7 @@
-import { ToolWithSize } from '../index.js';
+import { AAPMcpToolDefinition } from '../openapi-loader.js';
 
 interface DashboardData {
-  allTools: ToolWithSize[];
+  allTools: AAPMcpToolDefinition[];
   allCategories: Record<string, string[]>;
   recordApiQueries: boolean;
 }
@@ -13,7 +13,7 @@ export const renderDashboard = (data: DashboardData): string => {
   const totalSize = allTools.reduce((sum, tool) => sum + (tool.size || 0), 0);
 
   // Calculate category statistics dynamically
-  const categoryStats: Record<string, { tools: ToolWithSize[]; size: number }> = {};
+  const categoryStats: Record<string, { tools: AAPMcpToolDefinition[]; size: number }> = {};
   for (const [categoryName, categoryTools] of Object.entries(allCategories)) {
     const tools = allTools.filter(tool => categoryTools.includes(tool.name));
     categoryStats[categoryName] = {

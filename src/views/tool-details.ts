@@ -1,4 +1,5 @@
-import { ToolWithSize } from '../index.js';
+import { AAPMcpToolDefinition } from '../openapi-loader.js';
+import { getLogIcon } from './utils.js';
 
 interface LogEntry {
   timestamp: string;
@@ -14,7 +15,7 @@ interface CategoryWithAccess {
 }
 
 interface ToolDetailsData {
-  tool: ToolWithSize;
+  tool: AAPMcpToolDefinition;
   logEntries: LogEntry[];
   last10Calls: LogEntry[];
   errorCodeSummary: Record<number, number>;
@@ -350,6 +351,90 @@ export const renderToolDetails = (data: ToolDetailsData): string => {
             border-radius: 4px;
             font-size: 0.9em;
         }
+        .deprecation-warning {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .deprecation-icon {
+            font-size: 1.5em;
+        }
+        .tool-logs-section {
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+        .tool-logs-section h2 {
+            margin-top: 0;
+            color: #495057;
+        }
+        .log-entries {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .log-entry {
+            display: flex;
+            align-items: center;
+            padding: 12px;
+            background-color: white;
+            border-radius: 6px;
+            border: 1px solid #dee2e6;
+            gap: 12px;
+        }
+        .log-severity-icon {
+            font-size: 16px;
+            min-width: 20px;
+        }
+        .log-severity-icon.warn {
+            color: #856404;
+        }
+        .log-severity-icon.info {
+            color: #0277bd;
+        }
+        .log-severity-icon.err {
+            color: #dc3545;
+        }
+        .log-message-text {
+            flex: 1;
+            color: #495057;
+            font-size: 0.95em;
+        }
+        .log-severity-badge {
+            font-size: 0.8em;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-weight: 500;
+            text-transform: uppercase;
+        }
+        .log-severity-badge.warn {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        .log-severity-badge.info {
+            background-color: #e1f5fe;
+            color: #0277bd;
+            border: 1px solid #81d4fa;
+        }
+        .log-severity-badge.err {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .no-logs {
+            color: #6c757d;
+            font-style: italic;
+            text-align: center;
+            padding: 20px;
+        }
     </style>
 </head>
 <body>
@@ -364,6 +449,33 @@ export const renderToolDetails = (data: ToolDetailsData): string => {
             <h1>${tool.name}</h1>
             <span class="service-badge service-${tool.service || 'unknown'}">${tool.service || 'unknown'}</span>
         </div>
+
+        ${tool.deprecated ? `
+        <div class="deprecation-warning">
+            <span class="deprecation-icon">⚠️</span>
+            <div>
+                <strong>Deprecation Warning:</strong> This endpoint is deprecated.
+            </div>
+        </div>
+        ` : ''}
+
+        ${tool.logs && tool.logs.length > 0 ? `
+        <div class="tool-logs-section">
+            <h2>Messages</h2>
+            <div class="log-entries">
+                ${tool.logs.map(log => {
+                    const icon = getLogIcon(log.severity);
+                    return `
+                    <div class="log-entry">
+                        <span class="log-severity-icon ${log.severity.toLowerCase()}">${icon}</span>
+                        <span class="log-message-text">${log.msg}</span>
+                        <span class="log-severity-badge ${log.severity.toLowerCase()}">${log.severity}</span>
+                    </div>
+                    `;
+                }).join('')}
+            </div>
+        </div>
+        ` : ''}
 
         <div class="schema-section">
             <h2>Usage Statistics</h2>
