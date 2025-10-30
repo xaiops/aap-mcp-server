@@ -15,6 +15,7 @@ export interface McpToolLogEntry {
 }
 
 export interface AAPMcpToolDefinition extends McpToolDefinition {
+  deprecated: boolean;
   logs: McpToolLogEntry[];
   size?: number;
 }
@@ -365,6 +366,8 @@ export function extractToolsFromApi(api: OpenAPIV3.Document, defaultInclude = tr
 
             // Determine security requirements
             const securityRequirements = operation.security === null ? globalSecurity : operation.security || globalSecurity;
+
+            const deprecated = operation.deprecated || false;
 
             // Create the tool definition
             tools.push({
