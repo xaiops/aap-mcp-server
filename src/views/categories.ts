@@ -1,10 +1,10 @@
-import { ToolWithSize } from '../index.js';
+import { AAPMcpToolDefinition } from '../openapi-loader.js';
 
 interface CategoryData {
   name: string;
   displayName: string;
   description: string;
-  tools: ToolWithSize[];
+  tools: AAPMcpToolDefinition[];
   color: string;
   toolCount: number;
   totalSize: number;
@@ -12,13 +12,13 @@ interface CategoryData {
 
 interface CategoriesOverviewData {
   categories: CategoryData[];
-  allTools: ToolWithSize[];
+  allTools: AAPMcpToolDefinition[];
 }
 
 interface CategoryToolsData {
   categoryName: string;
   displayName: string;
-  filteredTools: ToolWithSize[];
+  filteredTools: AAPMcpToolDefinition[];
   totalSize: number;
   allCategories: Record<string, string[]>;
 }

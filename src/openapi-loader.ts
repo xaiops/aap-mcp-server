@@ -84,9 +84,17 @@ export interface OpenApiSpec {
   [key: string]: unknown;
 }
 
+export interface McpToolLogEntry {
+  severity: "INFO" | "WARN" | "ERR";
+  msg: string;
+}
+
 export interface AAPMcpToolDefinition extends McpToolDefinition {
   deprecated: boolean;
   service?: string;
+  originalDescription?: string;
+  logs: McpToolLogEntry[];
+  size: number;
 }
 
 export interface OpenApiSpecEntry {
@@ -143,9 +151,13 @@ export const reformatEdaTool = (tool: AAPMcpToolDefinition): AAPMcpToolDefinitio
  */
 export const reformatGatewayTool = (tool: AAPMcpToolDefinition): AAPMcpToolDefinition | false => {
   tool.name = "gateway." + tool.name;
+  const originalDescription = tool.description;
   tool.description = tool.description?.trim().split('\n\n')[0];
-  if (tool.description?.includes("Legacy")) {
-    return false;
+  if (originalDescription && originalDescription.trim() != tool.description.trim()) {
+    tool.logs.push({ severity: "WARN", msg: "description was truncated" });
+  }
+  if (!tool.deprecated && tool.description?.includes("Legacy")) {
+    tool.logs.push({ severity: "WARN", msg: "tool should be marked as deprecated" });
   }
   return tool;
 };
@@ -155,13 +167,21 @@ export const reformatGatewayTool = (tool: AAPMcpToolDefinition): AAPMcpToolDefin
  */
 export const reformatGalaxyTool = (tool: AAPMcpToolDefinition): AAPMcpToolDefinition | false => {
   if (tool.pathTemplate?.startsWith("/api/galaxy/_ui")) {
+    tool.logs.push({ severity: "INFO", msg: "tool ignored, path starts with /api/galaxy/_ui" });
     return false;
   }
   if (!tool.name.startsWith("api_galaxy_v3")) {
-    // Hide the other namespaces
+    tool.logs.push({ severity: "INFO", msg: "tool ignored, name doesn't start with api_galaxy_v3" });
     return false;
   }
+  const originalName = tool.name;
   tool.name = tool.name.replace(/(api_galaxy_v3_|api_galaxy_|)(.+)/, "galaxy.$2");
+  if (originalName != tool.name) {
+    tool.logs.push({ severity: "WARN", msg: `tool name rewritten from ${originalName}` });
+  }
+  if (!tool.deprecated && tool.description?.includes("DEPRECATED")) {
+    tool.logs.push({ severity: "WARN", msg: "tool should be marked as deprecated" });
+  }
   return tool;
 };
 
@@ -171,7 +191,11 @@ export const reformatGalaxyTool = (tool: AAPMcpToolDefinition): AAPMcpToolDefini
 export const reformatControllerTool = (tool: AAPMcpToolDefinition): AAPMcpToolDefinition => {
   tool.pathTemplate = tool.pathTemplate?.replace("/api/v2", "/api/controller/v2");
   tool.name = tool.name.replace(/api_(.+)/, "controller.$1");
+  const originalDescription = tool.description;
   tool.description = tool.description?.trim().split('\n\n')[0];
+  if (originalDescription.trim() != tool.description.trim()) {
+    tool.logs.push({ severity: "WARN", msg: "description was truncated" });
+  }
   return tool;
 };
 
