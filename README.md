@@ -133,13 +133,7 @@ Configuration values are resolved in the following order (highest to lowest prio
 
 ### User Categories
 
-The service supports role-based access control through user categories:
-
-- **Anonymous**: Limited or no tool access (default for unauthenticated users)
-- **User**: Standard user access with read-only tools
-- **Admin**: Full administrative access to all tools
-
-Categories are automatically determined based on user permissions from the AAP token, but can be overridden using category-specific endpoints or configured through custom categories in the YAML file.
+The service supports role-based access control through user categories.
 
 ## Usage
 
@@ -252,22 +246,6 @@ Tool availability depends on your configured categories and user permissions. Wh
 
 ## Development
 
-### Project Structure
-
-```
-├── src/
-│   ├── index.ts              # Main service implementation
-│   ├── logger.ts             # Tool usage logging
-│   └── views/                # Web UI rendering
-│       └── index.ts          # Dashboard and UI components
-├── kubernetes/
-│   └── deployment.yaml       # Kubernetes deployment configuration
-├── aap-mcp.yaml             # Main configuration file
-├── aap-mcp.sample.yaml      # Sample configuration
-├── package.json             # Dependencies and scripts
-└── tool_list.csv            # Generated tool list (created at runtime)
-```
-
 ### Key Features
 
 - **Flexible Configuration**: YAML-based configuration with environment variable overrides
@@ -296,42 +274,6 @@ The configuration system follows a hierarchical approach:
 3. **Built-in Defaults** (lowest priority)
    - Default OpenAPI specification URLs for each service
    - Standard port (3000) and base URL (https://localhost)
-
-### Adding New Services
-
-To add support for additional AAP services:
-
-1. **Add service to configuration**:
-```yaml
-services:
-  - name: new_service
-    url: "https://your-aap/api/new_service/openapi.json"
-    enabled: true
-```
-
-2. **Update defaultConfigs** in `src/index.ts`:
-```typescript
-const defaultConfigs: Record<string, { url: string; enabled?: boolean }> = {
-  // ... existing services
-  new_service: {
-    url: `${CONFIG.BASE_URL}/api/new_service/openapi.json`,
-  },
-};
-```
-
-3. **Add reformat function** to standardize tool names:
-```typescript
-const reformatFunctions: Record<string, (tool: AAPMcpToolDefinition) => AAPMcpToolDefinition | false> = {
-  // ... existing functions
-  new_service: (tool: AAPMcpToolDefinition) => {
-    tool.name = "new_service." + tool.name;
-    tool.pathTemplate = "/api/new_service" + tool.pathTemplate;
-    return tool;
-  },
-};
-```
-
-4. **Update categories** to include relevant tools from the new service
 
 ## Container Deployment
 
