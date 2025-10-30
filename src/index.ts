@@ -66,6 +66,9 @@ const CONFIG = {
   FALLBACK_BEARER_TOKEN: process.env.BEARER_TOKEN_OAUTH2_AUTHENTICATION,
 } as const;
 
+// Log entries size limit for /logs endpoint
+const logEntriesSizeLimit = 10000;
+
 // Log configuration settings
 console.log(`BASE_URL: ${CONFIG.BASE_URL}`);
 
@@ -892,7 +895,7 @@ app.get('/logs', async (req, res) => {
 
     // Get all log entries
     const allEntries = await getAllLogEntries();
-    let lastEntries = allEntries.slice(0, 1000);
+    let lastEntries = allEntries.slice(0, logEntriesSizeLimit);
 
     // Apply status code filter if provided
     const statusCodeFilter = req.query.status_code as string;
@@ -955,7 +958,8 @@ app.get('/logs', async (req, res) => {
       userAgentFilter,
       statusCodeSummary,
       toolSummary,
-      userAgentSummary
+      userAgentSummary,
+      logEntriesSizeLimit
     };
 
     // Use the view function to render the HTML
