@@ -16,10 +16,11 @@ interface LogsData {
   statusCodeSummary: Record<number, number>;
   toolSummary: Record<string, number>;
   userAgentSummary: Record<string, number>;
+  logEntriesSizeLimit: number;
 }
 
 export const renderLogs = (data: LogsData): string => {
-  const { lastEntries, totalRequests, statusCodeFilter, toolFilter, userAgentFilter, statusCodeSummary, toolSummary, userAgentSummary } = data;
+  const { lastEntries, totalRequests, statusCodeFilter, toolFilter, userAgentFilter, statusCodeSummary, toolSummary, userAgentSummary, logEntriesSizeLimit } = data;
 
   // Helper function to format timestamp for display
   const formatTimestamp = (timestamp: string) => {
@@ -201,7 +202,7 @@ export const renderLogs = (data: LogsData): string => {
 </head>
 <body>
     <div class="container">
-        <h1>Request Logs<span style="color: #6c757d; font-size: 0.7em; margin-left: 15px;">Last 1000 requests</span></h1>
+        <h1>Request Logs<span style="color: #6c757d; font-size: 0.7em; margin-left: 15px;">Last ${logEntriesSizeLimit.toLocaleString()} requests</span></h1>
 
         <div class="navigation">
             <a href="/" class="nav-link">Dashboard</a>
