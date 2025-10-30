@@ -66,6 +66,9 @@ const CONFIG = {
   FALLBACK_BEARER_TOKEN: process.env.BEARER_TOKEN_OAUTH2_AUTHENTICATION,
 } as const;
 
+// Log entries size limit for /logs endpoint
+const logEntriesSizeLimit = 10000;
+
 // Log configuration settings
 console.log(`BASE_URL: ${CONFIG.BASE_URL}`);
 
@@ -170,33 +173,21 @@ const storeSessionData = (sessionId: string, token: string, permissions: {is_sup
   console.log(`Stored session data for ${sessionId}: superuser=${permissions.is_superuser}, auditor=${permissions.is_platform_auditor}`);
 };
 
-// Determine user category based on permissions
-const getUserCategory = (sessionId: string | undefined, categoryOverride?: string): Category => {
-  // If a category override is specified, use it regardless of permissions
-  if (categoryOverride) {
-    const categoryName = categoryOverride.toLowerCase();
+// Determine user category based on category name
+const getUserCategory = (category?: string): Category => {
+  // category is the only way to set the category
+  if (category) {
+    const categoryName = category.toLowerCase();
     if (allCategories[categoryName]) {
       return allCategories[categoryName];
     } else {
-      console.warn(`Unknown category override: ${categoryOverride}, defaulting to anonymous`);
-      return allCategories['anonymous'] || [];
+      console.warn(`Unknown category: ${category}, returning empty category`);
+      return [];
     }
   }
 
-  if (!sessionId || !sessionData[sessionId]) {
-    return allCategories['anonymous'] || []; // Default to anonymous category for unauthenticated users
-  }
-
-  const session = sessionData[sessionId];
-  // Administrators get the admin category, regular users get the user category
-  if (session.is_superuser && allCategories['admin']) {
-    return allCategories['admin'];
-  } else if (allCategories['user']) {
-    return allCategories['user'];
-  } else {
-    // Fallback to anonymous if user/admin categories don't exist
-    return allCategories['anonymous'] || [];
-  }
+  // If no category is provided, return empty category (no tools available)
+  return [];
 };
 
 // Filter tools based on category
@@ -351,8 +342,8 @@ server.setRequestHandler(ListToolsRequestSchema, async (request, extra) => {
   const transport = sessionId ? transports[sessionId] : null;
   const categoryOverride = transport ? (transport as any).categoryOverride : undefined;
 
-  // Determine user category based on session permissions or override
-  const category = getUserCategory(sessionId, categoryOverride);
+  // Determine user category based on category override
+  const category = getUserCategory(categoryOverride);
 
   // Filter tools based on category
   const filteredTools = filterToolsByCategory(allTools, category);
@@ -892,7 +883,7 @@ app.get('/logs', async (req, res) => {
 
     // Get all log entries
     const allEntries = await getAllLogEntries();
-    let lastEntries = allEntries.slice(0, 1000);
+    let lastEntries = allEntries.slice(0, logEntriesSizeLimit);
 
     // Apply status code filter if provided
     const statusCodeFilter = req.query.status_code as string;
@@ -955,7 +946,8 @@ app.get('/logs', async (req, res) => {
       userAgentFilter,
       statusCodeSummary,
       toolSummary,
-      userAgentSummary
+      userAgentSummary,
+      logEntriesSizeLimit
     };
 
     // Use the view function to render the HTML
