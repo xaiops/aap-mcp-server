@@ -1,0 +1,104 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aap-mcp-server
+  namespace: aap-mcp-server
+  labels:
+    app: aap-mcp-server
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: aap-mcp-server
+  template:
+    metadata:
+      labels:
+        app: aap-mcp-server
+    spec:
+      serviceAccountName: aap-mcp-server
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: aap-mcp-server
+        image: aap-mcp-server:latest
+        imagePullPolicy: Always
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities: {}
+          readOnlyRootFilesystem: false
+        ports:
+        - name: http
+          containerPort: 3000
+          protocol: TCP
+        env:
+        - name: MCP_PORT
+          value: "3000"
+        - name: BASE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: aap-mcp-config
+              key: base_url
+              optional: true
+        - name: BEARER_TOKEN_OAUTH2_AUTHENTICATION
+          valueFrom:
+            secretKeyRef:
+              name: aap-mcp-secrets
+              key: bearer-token
+              optional: true
+        - name: RECORD_API_QUERIES
+          valueFrom:
+            configMapKeyRef:
+              name: aap-mcp-config
+              key: record_api_queries
+              optional: true
+        - name: IGNORE_CERTIFICATE_ERRORS
+          valueFrom:
+            configMapKeyRef:
+              name: aap-mcp-config
+              key: ignore_certificate_errors
+              optional: true
+        - name: ENABLE_UI
+          valueFrom:
+            configMapKeyRef:
+              name: aap-mcp-config
+              key: enable_ui
+              optional: true
+        volumeMounts:
+        - name: config
+          mountPath: /app/aap-mcp.yaml
+          subPath: aap-mcp.yaml
+          readOnly: true
+        - name: logs
+          mountPath: /app/logs
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /api/v1/health
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /api/v1/health
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+      volumes:
+      - name: config
+        configMap:
+          name: aap-mcp-config
+      - name: logs
+        emptyDir: {}
+

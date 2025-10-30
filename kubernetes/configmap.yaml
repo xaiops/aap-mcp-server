@@ -1,0 +1,190 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aap-mcp-config
+  namespace: aap-mcp-server
+  labels:
+    app: aap-mcp-server
+data:
+  aap-mcp.yaml: |
+    ---
+    # Configuration for API query recording
+    # record_api_queries: false
+
+    # Configuration for HTTPS certificate validation
+    ignore-certificate-errors: true
+
+    # Configuration for Web UI (defaults to false if not specified)
+    enable_ui: true
+
+    # Configuration for base URL (defaults to https://localhost if not specified)
+    # Lower priority than BASE_URL environment variable
+    base_url: "https://aap-aap.apps.itz-g8jmbd.infra01-lb.fra02.techzone.ibm.com"
+
+    # Configuration for services (list of service configurations)
+    # Each service has a name that must be one of: controller, galaxy, gateway, eda
+    # Optional url, local_path, and enabled can override defaults
+    # If local_path is not specified, it defaults to the url value
+    # If enabled is not specified, it defaults to true
+
+    services:
+      - name: controller
+        local_path: data/controller-schema.json
+      - name: galaxy
+        local_path: data/galaxy-openapi.json
+      - name: gateway
+        local_path: data/gateway-schema.json
+      - name: eda
+        local_path: data/eda-openapi.json
+
+    categories:
+      # Anonymous category for unauthenticated users
+      anonymous: []
+
+      # Phase 1
+      job_management:
+        - controller.job_templates_launch_create
+        - controller.workflow_job_templates_launch_create
+        - controller.jobs_read
+        - controller.workflow_jobs_read
+        - controller.jobs_stdout_read
+        - controller.jobs_job_events_list
+        - controller.jobs_cancel_create
+        - controller.workflow_jobs_cancel_create
+        - controller.jobs_relaunch_create
+        - controller.workflow_jobs_relaunch_create
+        - controller.jobs_list
+        - eda.activation_instances_list
+        - eda.activation_instances_logs_list
+        - controller.analytics_list
+        - controller.metrics_list
+        - controller.projects_list
+        - controller.job_templates_list
+        - controller.workflow_job_templates_list
+        - controller.job_templates_read
+        - controller.workflow_job_templates_read
+
+      inventory_management:
+        - controller.inventories_list
+        - controller.inventory_sources_update_create
+        - controller.hosts_list
+        - controller.hosts_read
+        - controller.hosts_variable_data_read
+        - controller.groups_list
+        - controller.groups_create
+
+      system_monitoring:
+        - controller.instance_groups_list
+        - controller.instance_groups_create
+        - controller.instance_groups_read
+        - controller.mesh_visualizer_list
+        - controller.instances_create
+        - gateway.activitystream_list
+        - gateway.authenticators_list
+        - gateway.http_ports_list
+        - gateway.http_ports_create
+        - controller.activity_stream_list
+        - controller.instances_read
+        - gateway.status_retrieve
+        - gateway.feature_flags_state_retrieve
+
+      # Phase 2
+      user_management:
+        - gateway.teams_list
+        - gateway.teams_retrieve
+        - gateway.teams_create
+        - gateway.teams_update
+        - gateway.teams_destroy
+        - gateway.teams_users_list
+        - gateway.me_list
+        - gateway.role_definitions_list
+        - gateway.role_team_assignments_list
+        - gateway.role_user_assignments_list
+        - gateway.role_user_assignments_create
+        - gateway.role_user_assignments_destroy
+        - gateway.organizations_list
+        - gateway.organizations_retrieve
+        - gateway.organizations_create
+        - gateway.organizations_update
+        - gateway.organizations_destroy
+        - gateway.activitystream_list
+        - controller.activity_stream_list
+        - gateway.users_list
+        - gateway.users_retrieve
+        - gateway.users_create
+        - gateway.users_update
+        - gateway.users_destroy
+        - gateway.users_teams_list
+        - gateway.authenticators_list
+        - gateway.authenticators_retrieve
+        - gateway.authenticators_create
+        - gateway.authenticators_update
+        - gateway.authenticators_destroy
+        - gateway.authenticator_maps_list
+        - gateway.authenticator_maps_create
+
+      security_compliance:
+        - controller.credentials_list
+        - controller.credentials_create
+        - controller.credentials_read
+        - controller.credentials_test_create
+        - controller.jobs_list
+        - gateway.activitystream_list
+        - controller.activity_stream_list
+        - controller.credential_types_list
+        - controller.credential_types_create
+        - controller.credential_types_read
+        - controller.credential_types_update
+        - controller.credential_types_delete
+
+      platform_configuration:
+        - controller.settings_read
+        - controller.settings_partial_update
+        - gateway.settings_getter
+        - gateway.settings_update
+        - controller.config_list
+        - controller.config_create
+        - controller.notification_templates_list
+        - controller.notification_templates_create
+        - controller.notification_templates_read
+        - controller.notification_templates_update
+        - controller.notification_templates_delete
+        - gateway.http_ports_list
+        - gateway.http_ports_retrieve
+        - gateway.http_ports_routes_list
+        - gateway.http_ports_routes_associate_create
+        - gateway.http_ports_routes_disassociate_create
+        - controller.execution_environments_list
+        - controller.execution_environments_create
+        - controller.execution_environments_read
+        - controller.execution_environments_update
+        - controller.execution_environments_delete
+
+      developer_testing:
+        - controller.job_templates_launch_create
+        - controller.workflow_job_templates_launch_create
+        - controller.jobs_list
+        - controller.jobs_read
+        - controller.jobs_job_events_list
+        - controller.jobs_job_host_summaries_list
+        - controller.jobs_stdout_read
+        - controller.workflow_jobs_list
+        - controller.workflow_jobs_read
+        - controller.workflow_jobs_workflow_nodes_list
+
+      # Admin category for superusers
+      # Note: Admin users will get access to all tools listed here
+      # You may want to generate a complete list of all tools and populate this category
+      admin:
+        - controller.job_templates_launch_create
+        - controller.workflow_job_templates_launch_create
+        - controller.jobs_read
+        - controller.workflow_jobs_read
+        # Add more tools as needed for admin access
+      user:
+        - controller.jobs_list
+        - controller.jobs_read
+        - controller.projects_list
+        - controller.inventories_list
+        - controller.hosts_list
+
