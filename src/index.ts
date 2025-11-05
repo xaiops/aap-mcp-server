@@ -535,7 +535,16 @@ const mcpPostHandler = async (req: express.Request, res: express.Response, categ
           (transport as any).userAgent = req.headers['user-agent'] || 'unknown';
 
           // Extract and validate the bearer token
-          const token = extractBearerToken(authHeader);
+          // First try to get token from Authorization header, fallback to environment variable
+          let token = extractBearerToken(authHeader);
+          if (!token) {
+            // If no token in header, use fallback token from environment
+            token = CONFIG.FALLBACK_BEARER_TOKEN;
+            if (token) {
+              console.log(`No Authorization header provided for session ${sessionId}, using fallback token from environment`);
+            }
+          }
+          
           if (token) {
             try {
               // Validate token and get user permissions
@@ -549,7 +558,8 @@ const mcpPostHandler = async (req: express.Request, res: express.Response, categ
               throw error;
             }
           } else {
-            console.warn(`No bearer token provided for session ${sessionId}`);
+            // No token available at all - fail session creation
+            throw new Error('No Bearer token available. Please provide an Authorization header or set BEARER_TOKEN_OAUTH2_AUTHENTICATION environment variable.');
           }
         }
       });
