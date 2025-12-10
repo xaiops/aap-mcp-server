@@ -19,7 +19,7 @@ data:
 
     # Configuration for base URL (defaults to https://localhost if not specified)
     # Lower priority than BASE_URL environment variable
-    base_url: "https://aap-aap.apps.itz-g8jmbd.infra01-lb.fra02.techzone.ibm.com"
+    base_url: "https://aap.example.com"  #CHANGEME
 
     # Configuration for services (list of service configurations)
     # Each service has a name that must be one of: controller, galaxy, gateway, eda
